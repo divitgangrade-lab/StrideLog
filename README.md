@@ -49,7 +49,7 @@ This repository includes a GitHub Actions workflow at `.github/workflows/pages.y
 4. Open the **Actions** tab and wait for **Deploy StrideLog to GitHub Pages** to finish.
 5. Open the site URL shown in the successful deployment (usually `https://OWNER.github.io/StrideLog/`).
 
-Later pushes to `main` redeploy the site automatically. GitHub Pages serves the static app while GitHub Pages is enabled, but it does not run an always-on application server. Student data, uploaded files, and report drafts stay in the individual browser on the device that created them; they are **not synced to GitHub or between devices**. Do not commit real student data or sensitive files to this repository. Check school/district policies and get approval before using a public website with student information.
+Later pushes to `main` run the JavaScript and Excel-template tests before deploying the site automatically. GitHub Pages serves the static app while GitHub Pages is enabled, but it does not run an always-on application server. Student data, uploaded files, and report drafts stay in the individual browser on the device that created them; they are **not synced to GitHub or between devices**. Do not commit real student data or sensitive files to this repository. Check school/district policies and get approval before using a public website with student information.
 
 ## Privacy and data handling
 

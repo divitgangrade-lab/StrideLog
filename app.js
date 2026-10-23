@@ -2,6 +2,7 @@ import { parseSpreadsheetRows, QUARTERS } from "./importer.js";
 import { buildProgressReport, reportFileName } from "./report.js";
 import { unzipHtml } from "./zip.js";
 import { parseXlsxRows } from "./xlsx.js";
+import { officeDocumentPreview } from "./file-preview.js";
 
 const STORAGE_KEY = "stridelog-workspace-v1";
 const FILE_DB_NAME = "stridelog-resources";
@@ -35,6 +36,10 @@ let reportSaveTimer;
 let fileDatabasePromise;
 let revealObserver;
 let activeFileUrls = [];
+let fileViewerUrl = null;
+let filePreviewUrl = null;
+let viewedFileId = null;
+let viewerMinimized = false;
 let activeTab = "Q1";
 let currentView = "home";
 let selectedStudentId = null;
@@ -618,8 +623,227 @@ function releaseFileUrls() {
   activeFileUrls = [];
 }
 
+function releaseViewerUrl() {
+  if (fileViewerUrl) URL.revokeObjectURL(fileViewerUrl);
+  if (filePreviewUrl) URL.revokeObjectURL(filePreviewUrl);
+  fileViewerUrl = null;
+  filePreviewUrl = null;
+}
+
 function fileExtension(name) {
   return name.split(".").at(-1)?.slice(0, 4).toUpperCase() || "FILE";
+}
+
+function appendPreviewMessage(container, title, description) {
+  const message = document.createElement("div");
+  message.className = "file-preview-message";
+  const heading = document.createElement("strong");
+  heading.textContent = title;
+  const detail = document.createElement("p");
+  detail.textContent = description;
+  message.append(heading, detail);
+  container.append(message);
+}
+
+function appendTextPreview(container, text) {
+  const pre = document.createElement("pre");
+  pre.className = "file-preview-text";
+  pre.textContent = text || "This file is empty.";
+  container.append(pre);
+}
+
+function parseDelimitedText(text, delimiter) {
+  const rows = [];
+  let row = [];
+  let value = "";
+  let quoted = false;
+  for (let index = 0; index < text.length; index++) {
+    const char = text[index];
+    if (char === '"' && quoted && text[index + 1] === '"') {
+      value += '"';
+      index++;
+    } else if (char === '"') {
+      quoted = !quoted;
+    } else if (char === delimiter && !quoted) {
+      row.push(value);
+      value = "";
+    } else if ((char === "\n" || char === "\r") && !quoted) {
+      if (char === "\r" && text[index + 1] === "\n") index++;
+      row.push(value);
+      rows.push(row);
+      row = [];
+      value = "";
+    } else {
+      value += char;
+    }
+  }
+  if (value || row.length) {
+    row.push(value);
+    rows.push(row);
+  }
+  return rows;
+}
+
+function appendTablePreview(container, rows) {
+  const table = document.createElement("table");
+  table.className = "file-preview-table";
+  rows.forEach((row, rowIndex) => {
+    const tableRow = document.createElement("tr");
+    row.forEach((value) => {
+      const cell = document.createElement(rowIndex === 0 ? "th" : "td");
+      cell.textContent = value;
+      tableRow.append(cell);
+    });
+    table.append(tableRow);
+  });
+  container.append(table);
+}
+
+async function renderFilePreview(file) {
+  const content = document.querySelector("#file-preview-content");
+  content.replaceChildren();
+  const extension = fileExtension(file.name).toLowerCase();
+  const mime = file.type.toLowerCase();
+
+  if (extension === "pdf" || mime === "application/pdf") {
+    filePreviewUrl = URL.createObjectURL(file.data);
+    const frame = document.createElement("iframe");
+    frame.className = "file-preview-frame pdf-preview";
+    frame.title = file.name;
+    frame.src = filePreviewUrl;
+    content.append(frame);
+    return;
+  }
+  if (mime.startsWith("image/") || ["png", "jpg", "jpeg", "gif", "webp", "svg", "avif", "bmp"].includes(extension)) {
+    filePreviewUrl = URL.createObjectURL(file.data);
+    const image = document.createElement("img");
+    image.className = "file-preview-image";
+    image.alt = file.name;
+    image.src = filePreviewUrl;
+    image.addEventListener("error", () => appendPreviewMessage(content, "Image preview unavailable", "Try downloading this file to view it in another app."), { once: true });
+    content.append(image);
+    return;
+  }
+  if (mime.startsWith("audio/") || ["mp3", "wav", "ogg", "m4a", "aac", "flac"].includes(extension)) {
+    filePreviewUrl = URL.createObjectURL(file.data);
+    const audio = document.createElement("audio");
+    audio.className = "file-preview-media";
+    audio.controls = true;
+    audio.src = filePreviewUrl;
+    audio.textContent = "Your browser does not support audio playback.";
+    content.append(audio);
+    return;
+  }
+  if (mime.startsWith("video/") || ["mp4", "webm", "mov", "m4v", "ogv"].includes(extension)) {
+    filePreviewUrl = URL.createObjectURL(file.data);
+    const video = document.createElement("video");
+    video.className = "file-preview-video";
+    video.controls = true;
+    video.src = filePreviewUrl;
+    video.textContent = "Your browser does not support video playback.";
+    content.append(video);
+    return;
+  }
+  if (["docx", "pptx"].includes(extension)) {
+    appendPreviewMessage(content, "Preparing document preview…", "The document is processed locally in this browser.");
+    try {
+      const text = await officeDocumentPreview(file.data);
+      if (viewedFileId !== file.id) return;
+      content.replaceChildren();
+      appendTextPreview(content, text);
+    } catch (error) {
+      if (viewedFileId !== file.id) return;
+      content.replaceChildren();
+      appendPreviewMessage(content, "Document preview unavailable", `${error.message} You can still download the original file.`);
+    }
+    return;
+  }
+  if (extension === "xlsx" || extension === "xlsm") {
+    appendPreviewMessage(content, "Preparing spreadsheet preview…", "The workbook is processed locally in this browser.");
+    try {
+      const rows = await parseXlsxRows(await file.data.arrayBuffer());
+      if (viewedFileId !== file.id) return;
+      content.replaceChildren();
+      appendTablePreview(content, rows);
+    } catch (error) {
+      if (viewedFileId !== file.id) return;
+      content.replaceChildren();
+      appendPreviewMessage(content, "Spreadsheet preview unavailable", `${error.message} You can still download the original workbook.`);
+    }
+    return;
+  }
+  if (extension === "html" || extension === "htm") {
+    const html = await file.data.text();
+    if (viewedFileId !== file.id) return;
+    const frame = document.createElement("iframe");
+    frame.className = "file-preview-frame html-preview";
+    frame.title = file.name;
+    frame.setAttribute("sandbox", "");
+    frame.srcdoc = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: blob:; style-src 'unsafe-inline'">${html}`;
+    content.append(frame);
+    return;
+  }
+  if (extension === "csv" || extension === "tsv") {
+    const text = await file.data.text();
+    if (viewedFileId !== file.id) return;
+    appendTablePreview(content, parseDelimitedText(text, extension === "tsv" ? "\t" : ","));
+    return;
+  }
+  if (extension === "txt" || extension === "md" || extension === "json" || extension === "xml"
+      || extension === "yaml" || extension === "yml"
+      || extension === "log" || extension === "rtf" || extension === "js" || extension === "ts"
+      || extension === "css" || extension === "py" || extension === "java" || extension === "c"
+      || extension === "cpp" || extension === "h" || extension === "sql" || extension === "sh") {
+    appendTextPreview(content, await file.data.text());
+    return;
+  }
+  appendPreviewMessage(
+    content,
+    "Preview not supported for this file type",
+    "This browser can preview PDFs, common images, audio/video, text files, HTML, CSV, Excel workbooks, DOCX, and PPTX. Download this file to open it in another app.",
+  );
+}
+
+async function openFileViewer(file) {
+  viewedFileId = file.id;
+  viewerMinimized = false;
+  releaseViewerUrl();
+  const viewer = document.querySelector("#file-viewer");
+  viewer.classList.remove("hidden", "minimized");
+  viewer.setAttribute("aria-hidden", "false");
+  restoreFloatingPanelPosition(viewer, "stridelog-file-panel-position");
+  setText("#file-viewer-name", file.name);
+  setText("#file-viewer-context", `${getSelectedStudent()?.name || "Student"} · ${file.quarter} · ${formatFileSize(file.size)}`);
+  setText("#file-viewer-type", fileExtension(file.name));
+  const download = document.querySelector("#file-viewer-download");
+  fileViewerUrl = URL.createObjectURL(file.data);
+  download.href = fileViewerUrl;
+  download.download = file.name;
+  document.querySelector("#file-preview-content").replaceChildren();
+  await renderFilePreview(file);
+}
+
+function closeFileViewer() {
+  viewedFileId = null;
+  releaseViewerUrl();
+  document.querySelector("#file-preview-content").replaceChildren();
+  const viewer = document.querySelector("#file-viewer");
+  viewer.classList.add("hidden");
+  viewer.setAttribute("aria-hidden", "true");
+}
+
+function restoreFloatingPanelPosition(panel, storageKey) {
+  try {
+    const saved = JSON.parse(localStorage.getItem(storageKey) || "null");
+    if (!Number.isFinite(saved?.left) || !Number.isFinite(saved?.top)) return;
+    const rect = panel.getBoundingClientRect();
+    panel.style.left = `${Math.max(0, Math.min(saved.left, window.innerWidth - rect.width))}px`;
+    panel.style.top = `${Math.max(0, Math.min(saved.top, window.innerHeight - Math.min(rect.height, 58)))}px`;
+    panel.style.right = "auto";
+    panel.style.bottom = "auto";
+  } catch (error) {
+    showToast(`Could not restore panel position: ${error.message}`, true);
+  }
 }
 
 async function renderTabPanel(student) {
@@ -692,8 +916,14 @@ async function renderTabPanel(student) {
           anchor.href = url;
           anchor.download = file.name;
           anchor.click();
-          URL.revokeObjectURL(url);
+          window.setTimeout(() => URL.revokeObjectURL(url), 1000);
         });
+        const preview = document.createElement("button");
+        preview.type = "button";
+        preview.className = "file-preview-button";
+        preview.textContent = "View";
+        preview.setAttribute("aria-label", `View ${file.name}`);
+        preview.addEventListener("click", () => void openFileViewer(file));
         const remove = document.createElement("button");
         remove.type = "button";
         remove.className = "file-remove";
@@ -710,7 +940,7 @@ async function renderTabPanel(student) {
             showToast(`Could not remove file: ${error.message}`, true);
           }
         });
-        row.append(type, details, download, remove);
+        row.append(type, details, preview, download, remove);
         list.append(row);
       }
       panel.append(list);
@@ -796,6 +1026,7 @@ function openReportComposer() {
   composerClosed = false;
   composerMinimized = false;
   renderReportComposer();
+  restoreFloatingPanelPosition(document.querySelector("#report-composer"), "stridelog-report-panel-position");
   document.querySelector("#report-editor").focus();
 }
 
@@ -828,6 +1059,43 @@ function exportProgressReport() {
   link.click();
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   showToast("Progress report exported as a text file.");
+}
+
+function makeFloatingPanelDraggable(panel, handle, storageKey) {
+  handle.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0 || event.target.closest("button, a, input, textarea, select")) return;
+    const rect = panel.getBoundingClientRect();
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const originX = rect.left;
+    const originY = rect.top;
+    handle.setPointerCapture(event.pointerId);
+    panel.classList.add("is-dragging");
+
+    const move = (moveEvent) => {
+      const left = Math.max(0, Math.min(window.innerWidth - rect.width, originX + moveEvent.clientX - startX));
+      const top = Math.max(0, Math.min(window.innerHeight - Math.min(rect.height, 58), originY + moveEvent.clientY - startY));
+      panel.style.left = `${left}px`;
+      panel.style.top = `${top}px`;
+      panel.style.right = "auto";
+      panel.style.bottom = "auto";
+    };
+    const finish = () => {
+      panel.classList.remove("is-dragging");
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", finish);
+      handle.removeEventListener("pointercancel", finish);
+      try {
+        const rect = panel.getBoundingClientRect();
+        localStorage.setItem(storageKey, JSON.stringify({ left: rect.left, top: rect.top }));
+      } catch (error) {
+        showToast(`Could not save panel position: ${error.message}`, true);
+      }
+    };
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", finish, { once: true });
+    handle.addEventListener("pointercancel", finish, { once: true });
+  });
 }
 
 function renderClasses() {
@@ -1000,6 +1268,7 @@ function applyScrollReveals() {
 
 function selectStudent(studentId) {
   if (selectedStudentId !== studentId) {
+    closeFileViewer();
     window.clearTimeout(reportSaveTimer);
     saveReportDraft();
     document.querySelector("#report-editor").dataset.studentId = "";
@@ -1012,6 +1281,7 @@ function selectStudent(studentId) {
 
 function showView(view) {
   currentView = view;
+  if (view !== "student") closeFileViewer();
   if (view !== "student") {
     composerClosed = true;
     window.clearTimeout(reportSaveTimer);
@@ -1176,6 +1446,7 @@ async function removeSelectedStudent() {
   );
   if (!confirmed) return;
 
+  closeFileViewer();
   const form = document.querySelector("#student-form");
   const deleteButton = document.querySelector("#delete-student");
   deleteButton.disabled = true;
@@ -1314,6 +1585,16 @@ async function importSpreadsheet(file) {
 }
 
 function bindEvents() {
+  makeFloatingPanelDraggable(
+    document.querySelector("#report-composer"),
+    document.querySelector("#composer-drag-handle"),
+    "stridelog-report-panel-position",
+  );
+  makeFloatingPanelDraggable(
+    document.querySelector("#file-viewer"),
+    document.querySelector("#file-viewer-drag-handle"),
+    "stridelog-file-panel-position",
+  );
   document.querySelector("#nav-roster").addEventListener("click", () => showView("home"));
   document.querySelector("#nav-classes").addEventListener("click", () => showView("classes"));
   document.querySelector("#add-student").addEventListener("click", openAddStudentDialog);
@@ -1353,6 +1634,17 @@ function bindEvents() {
     composerMinimized = false;
     renderReportComposer();
   });
+  document.querySelector("#file-viewer-minimize").addEventListener("click", () => {
+    viewerMinimized = !viewerMinimized;
+    const viewer = document.querySelector("#file-viewer");
+    viewer.classList.toggle("minimized", viewerMinimized);
+    document.querySelector("#file-viewer-minimize").setAttribute(
+      "aria-label",
+      viewerMinimized ? "Restore file viewer" : "Minimize file viewer",
+    );
+    document.querySelector("#file-viewer-minimize").title = viewerMinimized ? "Restore" : "Minimize";
+  });
+  document.querySelector("#file-viewer-close").addEventListener("click", closeFileViewer);
   document.querySelector("#quarter-tabs").addEventListener("click", (event) => {
     const tab = event.target.closest("[data-quarter]");
     if (!tab || !QUARTER_TABS.includes(tab.dataset.quarter)) return;

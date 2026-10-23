@@ -215,6 +215,8 @@ h1 span { color: var(--green); }
 .file-row-details { min-width: 0; flex: 1; }
 .file-row-details strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #526056; font-size: 9px; }
 .file-row-details small { display: block; margin-top: 3px; color: #a2aaa4; font-size: 8px; }
+.file-preview-button { padding: 5px 8px; border: 1px solid #e5ece6; border-radius: 6px; background: #f9fcf9; color: #527360; cursor: pointer; font-size: 9px; font-weight: 600; }
+.file-preview-button:hover { background: #edf5ef; }
 .file-remove { display: grid; place-items: center; width: 24px; height: 24px; border: 0; border-radius: 6px; background: transparent; color: #a6afaa; cursor: pointer; }
 .file-remove:hover { background: #f8eded; color: #b46d6d; }
 .file-remove svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; }
@@ -273,11 +275,38 @@ h1 span { color: var(--green); }
 .composer-action:hover { background: #eef2ee; color: #45564a; }
 .composer-body { display: flex; flex: 1; min-height: 0; flex-direction: column; padding: 12px; }
 .report-composer.minimized .composer-body { display: none; }
+.report-composer.is-dragging, .file-viewer.is-dragging { opacity: .96; user-select: none; }
 .composer-notice { flex: none; margin: 0 0 8px; color: #98a29b; font-size: 9px; }
 .report-editor { flex: 1; min-height: 120px; width: 100%; padding: 13px; resize: none; border: 1px solid #e7ebe7; border-radius: 8px; background: #fdfefd; color: #46534a; font: 11px/1.65 ui-monospace, SFMono-Regular, Consolas, monospace; }
 .composer-footer { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-top: 10px; }
 .danger-button { width: 100%; margin-top: 18px; padding: 10px; border: 1px solid #f0dede; border-radius: 8px; background: #fffafa; color: #a44e4e; cursor: pointer; font-size: 10px; font-weight: 600; }
 .danger-button:hover { border-color: #e5bcbc; background: #fff4f4; }
+.file-viewer { position: fixed; right: 20px; bottom: 20px; z-index: 9; display: flex; width: min(650px, calc(100vw - 40px)); height: min(690px, calc(100vh - 40px)); min-height: 260px; flex-direction: column; overflow: hidden; border: 1px solid #dfe5df; border-radius: 12px; background: #fff; box-shadow: 0 14px 48px #253b2e30; }
+.file-viewer.minimized { height: auto; min-height: 0; }
+.file-viewer-header { display: flex; flex: none; align-items: center; gap: 10px; min-height: 58px; padding: 0 14px; border-bottom: 1px solid #eaeeea; background: #fbfcfb; cursor: move; touch-action: none; }
+.file-viewer-type { display: grid; flex: none; place-items: center; min-width: 31px; height: 30px; padding: 0 5px; border-radius: 8px; background: #edf3ee; color: #547360; font-size: 8px; font-weight: 750; }
+.file-viewer-heading { display: grid; min-width: 0; gap: 3px; }
+.file-viewer-heading strong, .file-viewer-heading small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-viewer-heading strong { color: #354139; font-size: 10px; }
+.file-viewer-heading small { color: #98a19b; font-size: 9px; }
+.file-viewer-actions { display: flex; gap: 4px; margin-left: auto; }
+.file-viewer-download { display: grid; place-items: center; text-decoration: none; }
+.file-viewer-body { display: flex; min-height: 0; flex: 1; flex-direction: column; overflow: auto; background: #f6f8f6; }
+.file-viewer.minimized .file-viewer-body { display: none; }
+.file-preview-content { display: flex; min-height: 100%; flex: 1; flex-direction: column; }
+.file-preview-frame { width: 100%; min-height: 480px; flex: 1; border: 0; background: #fff; }
+.file-preview-image { display: block; max-width: 100%; max-height: 100%; margin: auto; object-fit: contain; }
+.file-viewer-body:has(.file-preview-image) { padding: 14px; }
+.file-preview-media { width: min(90%, 520px); margin: auto; }
+.file-preview-video { display: block; width: 100%; max-height: 100%; margin: auto; background: #17201b; }
+.file-preview-text { flex: 1; margin: 0; padding: 17px; overflow: auto; background: #fff; color: #3e4942; font: 11px/1.65 ui-monospace, SFMono-Regular, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+.file-preview-table { width: max-content; min-width: 100%; border-collapse: collapse; background: #fff; color: #47534b; font-size: 10px; }
+.file-preview-table th, .file-preview-table td { max-width: 300px; padding: 7px 9px; border: 1px solid #e6ebe7; text-align: left; white-space: pre-wrap; }
+.file-preview-table th { position: sticky; top: 0; background: #edf4ef; }
+.file-preview-message { margin: auto; padding: 25px; color: #88948c; text-align: center; font-size: 10px; line-height: 1.6; }
+.file-preview-message strong { display: block; margin-bottom: 7px; color: #4c5b51; font-size: 12px; }
+.file-preview-message p { max-width: 420px; margin: 0; }
+.file-viewer-header .composer-action { touch-action: manipulation; }
 .reveal { opacity: 0; transform: translateY(14px); transition: opacity .48s ease, transform .48s cubic-bezier(.2,.7,.2,1); }
 .reveal.is-visible { opacity: 1; transform: translateY(0); }
 .footer { display: flex; justify-content: space-between; gap: 10px; padding: 17px 5.2% 19px; border-top: 1px solid #e9ece8; color: #a3aca6; font-size: 9px; }
@@ -365,6 +394,8 @@ h1 span { color: var(--green); }
   .footer { flex-direction: column; padding: 13px 16px; }
   .report-launcher { bottom: 12px; left: 12px; }
   .report-composer { right: 8px; bottom: 8px; left: 8px; width: auto; height: min(75vh, 590px); }
+  .file-viewer { right: 8px; bottom: 8px; left: 8px; width: auto; height: min(78vh, 690px); }
+  .file-preview-frame { min-height: 320px; }
   .roster-controls { flex-wrap: wrap; }
   .empty-state { min-height: 380px; padding: 20px 8px; }
   .empty-state h2 { font-size: 19px; }

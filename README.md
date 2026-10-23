@@ -26,6 +26,8 @@ No framework installation, database server, or build step is required.
 - **Class groups:** create groups and drag students between classes or back to the unassigned list.
 - **Student files:** attach and download IEPs and other resources under the student and selected quarter. Files are stored in this browser's IndexedDB.
 - **PDFs:** add PDF IEPs and other documents through each quarter's file picker or drop zone; use **Misc files** for records that are not quarter-specific.
+- **In-app file viewer:** open saved files in a draggable, minimizable viewer. Browser previews cover PDFs, common images, audio/video, text/code, HTML in a sandboxed frame, XLSX, DOCX, and PPTX. Other formats stay downloadable, with a clear preview-unavailable message. Preview support depends on the browser and media codecs.
+- **Draggable panels:** move the report composer and file viewer around the screen; their positions are remembered on this device.
 - **Progress report composer:** open the bottom-left composer from a student's profile, edit its IEP-goal and progress-report prompts, minimize or close it, and export the draft as a `.txt` file. Drafts are saved locally per student.
 - **Student removal:** remove a student from **Edit profile**. After confirmation, StrideLog removes the student's assessments, notes, report draft, and saved files from this browser.
 - **Roster controls:** search with name suggestions, filter by class, and sort the student cards by name or recorded scores.
@@ -41,7 +43,7 @@ StrideLog has no application server or cloud sync. Student records stay in brows
 
 ## Spreadsheet format
 
-The downloadable Excel template has a `Progress Report` sheet with 30 blank student rows and an `Instructions` sheet. Add one row per student per quarter, using a name suffix such as `Jordan Lee Q1`. The workbook can be imported directly as `.xlsx`.
+The downloadable Excel template has a `Progress Report` sheet with 30 blank student rows and an `Instructions` sheet. Add one row per student per quarter, using a name suffix such as `Jordan Lee Q1`. The workbook can be imported directly as `.xlsx`; StrideLog selects the worksheet with the required student and test headers and ignores the instructions sheet.
 
 The importer also reads HTML tables inside a ZIP archive or a standalone `.html`, `.htm`, or HTML `.xls` file. Every format must contain a header row with `Student Name` and at least one `Test Number N` column. Test cells can contain a score alone (`80`) or a score followed by a test name (`80 - Unit exam`). Blank test cells are ignored. Student names can end in `Q1`, `Q2`, `Q3`, or `Q4` to assign that row to a quarter. The `Notes` and `Links to files` headers are optional.
 

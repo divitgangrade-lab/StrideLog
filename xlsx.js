@@ -83,14 +83,27 @@ export async function parseXlsxRows(buffer) {
   ]));
   const sharedStringsXml = fileMap.get("xl/sharedStrings.xml");
   const sharedStrings = sharedStringsXml ? sharedStringsFrom(sharedStringsXml) : [];
-  const rows = [];
+  const worksheets = [];
   for (const sheet of workbook.getElementsByTagName("sheet")) {
+    const name = sheet.getAttribute("name") || "Worksheet";
     const relationshipId = sheet.getAttribute("r:id")
       || sheet.getAttributeNS("http://schemas.openxmlformats.org/officeDocument/2006/relationships", "id");
     const target = targets.get(relationshipId);
     const worksheetXml = target && fileMap.get(target);
-    if (worksheetXml) rows.push(...rowsFromWorksheet(worksheetXml, sharedStrings, target));
+    if (worksheetXml) worksheets.push({
+      name,
+      rows: rowsFromWorksheet(worksheetXml, sharedStrings, target),
+    });
   }
-  if (!rows.length) throw new Error("The Excel workbook contains no readable worksheet data.");
-  return rows;
+  const hasImportHeaders = (rows) => {
+    const headers = rows.find((row) => row.some((cell) => cell.trim().toLowerCase() === "student name"));
+    return headers?.some((cell) => /^test\s*(?:number\s*)?\d+/i.test(cell.trim())) || false;
+  };
+  const importSheets = worksheets.filter((sheet) => hasImportHeaders(sheet.rows));
+  const preferredSheet = importSheets.find((sheet) => sheet.name.trim().toLowerCase() === "progress report");
+  const selectedSheet = preferredSheet || importSheets[0];
+  if (!selectedSheet) {
+    throw new Error('No worksheet with a "Student Name" and "Test Number" header was found.');
+  }
+  return selectedSheet.rows;
 }

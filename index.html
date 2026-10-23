@@ -243,5 +243,20 @@
       </div>
     </section>
     <button class="report-launcher hidden" id="open-report-composer" type="button"><span aria-hidden="true">✎</span> Write progress report</button>
+
+    <section class="file-viewer hidden" id="file-viewer" aria-label="Student file viewer" aria-hidden="true">
+      <header class="file-viewer-header" id="file-viewer-drag-handle">
+        <span class="file-viewer-type" id="file-viewer-type" aria-hidden="true">FILE</span>
+        <div class="file-viewer-heading"><strong id="file-viewer-name">Student file</strong><small id="file-viewer-context">Student resource</small></div>
+        <div class="file-viewer-actions">
+          <a class="composer-action file-viewer-download" id="file-viewer-download" aria-label="Download file" title="Download file">↓</a>
+          <button class="composer-action" id="file-viewer-minimize" type="button" aria-label="Minimize file viewer" title="Minimize">−</button>
+          <button class="composer-action" id="file-viewer-close" type="button" aria-label="Close file viewer" title="Close">×</button>
+        </div>
+      </header>
+      <div class="file-viewer-body" id="file-viewer-body">
+        <div class="file-preview-content" id="file-preview-content"></div>
+      </div>
+    </section>
   </body>
 </html>

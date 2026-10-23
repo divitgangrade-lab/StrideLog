@@ -73,7 +73,8 @@
         <header class="topbar">
           <div class="breadcrumbs"><span>Workspace</span><span class="crumb-divider">/</span><strong id="breadcrumb-current">Students</strong></div>
           <div class="topbar-actions">
-            <span class="save-indicator"><span class="online-dot"></span> Saved locally</span>
+            <span class="save-indicator" role="status" aria-live="polite"><span class="online-dot" id="save-status-dot"></span><span id="save-status-text">Saved locally</span></span>
+            <button class="button button-outline tutorial-trigger" id="tutorial-trigger" type="button" aria-label="Show StrideLog tutorial">?</button>
             <button class="button button-outline import-trigger" id="import-trigger" type="button">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5"/><path d="M5 14v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4"/></svg>
               Import spreadsheet
@@ -256,6 +257,17 @@
       </header>
       <div class="file-viewer-body" id="file-viewer-body">
         <div class="file-preview-content" id="file-preview-content"></div>
+      </div>
+    </section>
+
+    <div class="tour-backdrop hidden" id="tour-backdrop"></div>
+    <section class="tour-card hidden" id="tour-card" role="dialog" aria-modal="true" aria-labelledby="tour-title" aria-describedby="tour-description">
+      <div class="tour-progress" id="tour-progress">WELCOME</div>
+      <h2 id="tour-title">Welcome to StrideLog</h2>
+      <p id="tour-description"></p>
+      <div class="tour-footer">
+        <button class="text-button" id="tour-skip" type="button">Skip tour</button>
+        <div class="tour-controls"><button class="button button-outline button-compact" id="tour-back" type="button">Back</button><button class="button button-primary button-compact" id="tour-next" type="button">Next</button></div>
       </div>
     </section>
   </body>

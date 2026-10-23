@@ -5,6 +5,7 @@ import { parseXlsxRows } from "./xlsx.js";
 import { officeDocumentPreview } from "./file-preview.js";
 
 const STORAGE_KEY = "stridelog-workspace-v1";
+const TUTORIAL_KEY = "stridelog-tutorial-completed-v1";
 const FILE_DB_NAME = "stridelog-resources";
 const FILE_STORE_NAME = "student-files";
 const QUARTER_TABS = [...QUARTERS, "Misc files"];
@@ -33,6 +34,7 @@ document.body.append(resourceFileInput);
 let toastTimer;
 let noteSaveTimer;
 let reportSaveTimer;
+let studentSaveTimer;
 let fileDatabasePromise;
 let revealObserver;
 let activeFileUrls = [];
@@ -45,7 +47,42 @@ let currentView = "home";
 let selectedStudentId = null;
 let composerMinimized = false;
 let composerClosed = true;
+let tutorialIndex = 0;
+let tutorialOpen = false;
 let data;
+
+const TUTORIAL_STEPS = [
+  {
+    target: "#page-title",
+    title: "Welcome to StrideLog",
+    description: "Your private classroom workspace keeps student progress, assessments, notes, and resources together. This short tour shows you where to start.",
+  },
+  {
+    target: "#home-view",
+    title: "Your student roster",
+    description: "Choose a student card to open their profile. Search and use the class and score filters to find students quickly.",
+  },
+  {
+    target: "#overview-grid",
+    title: "A classroom snapshot",
+    description: "See your student, assessment, class, and saved-file totals at a glance. Profile edits and notes save automatically on this device.",
+  },
+  {
+    target: "#nav-classes",
+    title: "Keep classes organized",
+    description: "Create class groups, then drag student names into a group. You can move students back to Unassigned at any time.",
+  },
+  {
+    target: "#import-trigger",
+    title: "Bring in your spreadsheet",
+    description: "Download the Excel template or import an .xlsx workbook. StrideLog reads the student-data sheet and skips the instructions sheet.",
+  },
+  {
+    target: "#home-view",
+    title: "Open a profile to get started",
+    description: "Inside a profile, add tests and explore Q1–Q4 and Misc files. Use Write progress report to open a draggable report composer, and View beside a saved file to preview it.",
+  },
+];
 
 function id() {
   return crypto.randomUUID();
@@ -123,11 +160,22 @@ function showToast(message, isError = false) {
 function persist() {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    setSaveStatus("Saved on this device");
     return true;
   } catch (error) {
+    setSaveStatus("Save failed", true);
     showToast(`Could not save to this device: ${error.message}`, true);
     return false;
   }
+}
+
+function setSaveStatus(message, hasError = false) {
+  const label = document.querySelector("#save-status-text");
+  const dot = document.querySelector("#save-status-dot");
+  if (!label || !dot) return;
+  label.textContent = message;
+  dot.classList.toggle("save-error-dot", hasError);
+  dot.classList.toggle("save-pending-dot", message === "Saving…");
 }
 
 function loadWorkspace() {
@@ -1266,6 +1314,48 @@ function applyScrollReveals() {
   });
 }
 
+function closeTutorial(completed) {
+  tutorialOpen = false;
+  document.querySelector("#tour-backdrop").classList.add("hidden");
+  document.querySelector("#tour-card").classList.add("hidden");
+  document.querySelectorAll(".tour-highlight").forEach((element) => element.classList.remove("tour-highlight"));
+  if (completed) {
+    try {
+      localStorage.setItem(TUTORIAL_KEY, "true");
+    } catch (error) {
+      showToast(`Could not remember tutorial completion: ${error.message}`, true);
+    }
+  }
+  document.querySelector("#tutorial-trigger").focus();
+}
+
+function renderTutorialStep() {
+  if (!tutorialOpen) return;
+  const step = TUTORIAL_STEPS[tutorialIndex];
+  document.querySelectorAll(".tour-highlight").forEach((element) => element.classList.remove("tour-highlight"));
+  const selector = !data.students.length && (step.target === "#home-view" || step.target === "#overview-grid")
+    ? "#empty-state"
+    : step.target;
+  const target = document.querySelector(selector);
+  target?.classList.add("tour-highlight");
+  target?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  setText("#tour-progress", `STEP ${tutorialIndex + 1} OF ${TUTORIAL_STEPS.length}`);
+  setText("#tour-title", step.title);
+  setText("#tour-description", step.description);
+  document.querySelector("#tour-back").disabled = tutorialIndex === 0;
+  setText("#tour-next", tutorialIndex === TUTORIAL_STEPS.length - 1 ? "Finish" : "Next");
+  document.querySelector("#tour-backdrop").classList.remove("hidden");
+  document.querySelector("#tour-card").classList.remove("hidden");
+}
+
+function startTutorial() {
+  if (currentView !== "home") showView("home");
+  tutorialOpen = true;
+  tutorialIndex = 0;
+  renderTutorialStep();
+  document.querySelector("#tour-next").focus();
+}
+
 function selectStudent(studentId) {
   if (selectedStudentId !== studentId) {
     closeFileViewer();
@@ -1365,9 +1455,11 @@ function updateStudentNotes() {
   student.notes = document.querySelector("#student-notes").value;
   const hint = document.querySelector("#notes-save-hint");
   hint.textContent = "Saving…";
+  setSaveStatus("Saving…");
   window.clearTimeout(noteSaveTimer);
   noteSaveTimer = window.setTimeout(() => {
     const saved = persist();
+    if (saved) setSaveStatus("Saved on this device");
     hint.textContent = saved ? "Saved on this device" : "Could not save";
   }, 450);
 }
@@ -1392,7 +1484,7 @@ function editStudentProfile() {
   form.dataset.editingStudent = student.id;
   document.querySelector("#delete-student").classList.remove("hidden");
   setText("#student-dialog-title", "Edit student");
-  setText("#save-student-button", "Save changes");
+  setText("#save-student-button", "Done");
   studentDialog.showModal();
 }
 
@@ -1414,6 +1506,7 @@ function saveStudentForm(event) {
     return;
   }
   event.preventDefault();
+  window.clearTimeout(studentSaveTimer);
   const student = data.students.find((entry) => entry.id === form.dataset.editingStudent);
   const formData = new FormData(form);
   const name = String(formData.get("name") || "").trim();
@@ -1428,13 +1521,46 @@ function saveStudentForm(event) {
   student.className = String(formData.get("className") || "").trim();
   student.notes = String(formData.get("notes") || "").trim();
   if (student.className && !data.classes.includes(student.className)) data.classes.push(student.className);
-  persist();
+  if (!persist()) return;
   form.reset();
   delete form.dataset.editingStudent;
   document.querySelector("#delete-student").classList.add("hidden");
   studentDialog.close();
   render();
   showToast(`${student.name}'s profile updated.`);
+}
+
+function scheduleStudentProfileSave() {
+  const form = document.querySelector("#student-form");
+  const studentId = form.dataset.editingStudent;
+  if (!studentId) return;
+  const student = data.students.find((entry) => entry.id === studentId);
+  if (!student) return;
+  const name = form.elements.name.value.trim();
+  if (!name) {
+    setSaveStatus("Enter a student name", true);
+    return;
+  }
+  if (data.students.some((entry) => entry.id !== studentId && entry.name.toLowerCase() === name.toLowerCase())) {
+    form.elements.name.setCustomValidity("A student with this name is already on the roster.");
+    setSaveStatus("Student name already exists", true);
+    return;
+  }
+  form.elements.name.setCustomValidity("");
+  setSaveStatus("Saving…");
+  window.clearTimeout(studentSaveTimer);
+  studentSaveTimer = window.setTimeout(() => {
+    const current = data.students.find((entry) => entry.id === studentId);
+    if (!current || !form.dataset.editingStudent) return;
+    current.name = form.elements.name.value.trim();
+    current.className = form.elements.className.value.trim();
+    current.notes = form.elements.notes.value.trim();
+    if (current.className && !data.classes.includes(current.className)) data.classes.push(current.className);
+    if (persist()) {
+      setText("#notes-save-hint", "Profile saved automatically");
+      render();
+    }
+  }, 500);
 }
 
 async function removeSelectedStudent() {
@@ -1451,6 +1577,7 @@ async function removeSelectedStudent() {
   const deleteButton = document.querySelector("#delete-student");
   deleteButton.disabled = true;
   deleteButton.textContent = "Removing student…";
+  window.clearTimeout(studentSaveTimer);
   window.clearTimeout(reportSaveTimer);
   const index = data.students.findIndex((entry) => entry.id === student.id);
   const previousDraft = data.reportDrafts?.[student.id];
@@ -1611,7 +1738,13 @@ function bindEvents() {
   document.querySelector("#save-notes").addEventListener("click", saveNotesImmediately);
   document.querySelector("#student-notes").addEventListener("input", updateStudentNotes);
   document.querySelector("#student-form").addEventListener("submit", saveStudentForm);
-  document.querySelector("#student-form").elements.name.addEventListener("input", (event) => event.currentTarget.setCustomValidity(""));
+  document.querySelector("#student-form").elements.name.addEventListener("input", (event) => {
+    event.currentTarget.setCustomValidity("");
+    scheduleStudentProfileSave();
+  });
+  ["className", "notes"].forEach((name) => {
+    document.querySelector("#student-form").elements[name].addEventListener("input", scheduleStudentProfileSave);
+  });
   document.querySelector("#delete-student").addEventListener("click", () => void removeSelectedStudent());
   document.querySelector("#test-form").addEventListener("submit", addTestFromForm);
   document.querySelector("#class-form").addEventListener("submit", addClassFromForm);
@@ -1645,6 +1778,25 @@ function bindEvents() {
     document.querySelector("#file-viewer-minimize").title = viewerMinimized ? "Restore" : "Minimize";
   });
   document.querySelector("#file-viewer-close").addEventListener("click", closeFileViewer);
+  document.querySelector("#tutorial-trigger").addEventListener("click", startTutorial);
+  document.querySelector("#tour-next").addEventListener("click", () => {
+    if (tutorialIndex === TUTORIAL_STEPS.length - 1) closeTutorial(true);
+    else {
+      tutorialIndex++;
+      renderTutorialStep();
+    }
+  });
+  document.querySelector("#tour-back").addEventListener("click", () => {
+    if (tutorialIndex > 0) {
+      tutorialIndex--;
+      renderTutorialStep();
+    }
+  });
+  document.querySelector("#tour-skip").addEventListener("click", () => closeTutorial(true));
+  document.querySelector("#tour-backdrop").addEventListener("click", () => closeTutorial(true));
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && tutorialOpen) closeTutorial(true);
+  });
   document.querySelector("#quarter-tabs").addEventListener("click", (event) => {
     const tab = event.target.closest("[data-quarter]");
     if (!tab || !QUARTER_TABS.includes(tab.dataset.quarter)) return;
@@ -1694,6 +1846,19 @@ function bindEvents() {
     });
   });
   document.addEventListener("keydown", (event) => {
+    if (tutorialOpen && event.key === "Tab") {
+      const focusable = [...document.querySelector("#tour-card").querySelectorAll("button:not(:disabled)")];
+      const first = focusable[0];
+      const last = focusable.at(-1);
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+      return;
+    }
     if (event.key === "/" && !["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement.tagName)) {
       event.preventDefault();
       studentSearch.focus();
@@ -1704,3 +1869,38 @@ function bindEvents() {
 data = loadWorkspace();
 bindEvents();
 render();
+try {
+  if (localStorage.getItem(TUTORIAL_KEY) !== "true") window.setTimeout(startTutorial, 700);
+} catch (error) {
+  window.setTimeout(() => showToast(`Could not check tutorial preference: ${error.message}`, true), 0);
+}
+
+function flushAutosaves() {
+  window.clearTimeout(studentSaveTimer);
+  window.clearTimeout(noteSaveTimer);
+  window.clearTimeout(reportSaveTimer);
+  const form = document.querySelector("#student-form");
+  if (form.dataset.editingStudent) {
+    const student = data.students.find((entry) => entry.id === form.dataset.editingStudent);
+    const name = form.elements.name.value.trim();
+    if (student && name && !data.students.some((entry) => entry.id !== student.id && entry.name.toLowerCase() === name.toLowerCase())) {
+      student.name = name;
+      student.className = form.elements.className.value.trim();
+      student.notes = form.elements.notes.value.trim();
+    }
+  }
+  const activeStudent = getSelectedStudent();
+  if (activeStudent) activeStudent.notes = document.querySelector("#student-notes").value;
+  const reportEditor = document.querySelector("#report-editor");
+  if (reportEditor.dataset.studentId) {
+    const drafts = data.reportDrafts || (data.reportDrafts = {});
+    drafts[reportEditor.dataset.studentId] = reportEditor.value;
+  }
+  persist();
+}
+
+window.addEventListener("pagehide", flushAutosaves);
+window.addEventListener("beforeunload", flushAutosaves);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") flushAutosaves();
+});

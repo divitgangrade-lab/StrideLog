@@ -31,11 +31,25 @@ No framework installation, database server, or build step is required.
 - **Progress report composer:** open the bottom-left composer from a student's profile, edit its IEP-goal and progress-report prompts, minimize or close it, and export the draft as a `.txt` file. Drafts are saved locally per student.
 - **Student removal:** remove a student from **Edit profile**. After confirmation, StrideLog removes the student's assessments, notes, report draft, and saved files from this browser.
 - **Roster controls:** search with name suggestions, filter by class, and sort the student cards by name or recorded scores.
+- **Getting started tour:** first-time visitors see a short guided walkthrough. Select the `?` button in the top bar to replay it.
+- **Automatic saves:** student profile edits and teacher notes save locally as you type. The header shows when changes are saving and confirms when they are stored.
 - **Accessible motion and chart details:** assessment points are keyboard focusable and reveal details when selected. Dashboard sections animate into view, with reduced-motion preferences respected.
 - **Spreadsheet template and import:** download the ready-to-fill Excel workbook from the dashboard or [templates/StrideLog-Progress-Report-Template.xlsx](./templates/StrideLog-Progress-Report-Template.xlsx). Import `.xlsx` files directly, or select a ZIP containing an HTML spreadsheet or a standalone HTML spreadsheet. StrideLog looks for a `Student Name` header and columns named `Test Number 1`, `Test Number 2`, and so on, with optional `Notes` and `Links to files` columns. A suffix such as `Jordan Lee Q2` places assessments in Q2; a name without a quarter suffix is assigned to Q1. Matching students are updated by name while their class groups and saved files are kept.
 - **Local persistence:** roster data, test scores, groups, notes, and spreadsheet links are saved in this browser's local storage.
 
 The first launch includes a small example roster modeled on the supplied spreadsheet so the dashboard is ready to explore. Import your own spreadsheet to add or update those records. Use the browser's site-data controls to remove locally saved information.
+
+## Publish on GitHub Pages
+
+This repository includes a GitHub Actions workflow at `.github/workflows/pages.yml`. To publish the static dashboard:
+
+1. Push the `main` branch to GitHub.
+2. Open the repository's **Settings → Pages**.
+3. Under **Build and deployment**, choose **GitHub Actions** as the source.
+4. Open the **Actions** tab and wait for **Deploy StrideLog to GitHub Pages** to finish.
+5. Open the site URL shown in the successful deployment (usually `https://OWNER.github.io/StrideLog/`).
+
+Later pushes to `main` redeploy the site automatically. GitHub Pages serves the static app while GitHub Pages is enabled, but it does not run an always-on application server. Student data, uploaded files, and report drafts stay in the individual browser on the device that created them; they are **not synced to GitHub or between devices**. Do not commit real student data or sensitive files to this repository. Check school/district policies and get approval before using a public website with student information.
 
 ## Privacy and data handling
 

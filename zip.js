@@ -1,4 +1,4 @@
-function readHtmlEntries(buffer) {
+function readEntries(buffer) {
   const bytes = new Uint8Array(buffer);
   if (bytes.length < 22) throw new Error("This file is not a valid ZIP archive.");
   const view = new DataView(buffer);
@@ -34,7 +34,7 @@ function readHtmlEntries(buffer) {
     }
     const name = new TextDecoder().decode(bytes.subarray(offset + 46, nameEnd));
     offset = nameEnd + extraLength + commentLength;
-    if (!/\.(html?|xhtml)$/i.test(name) || name.endsWith("/")) continue;
+    if (name.endsWith("/")) continue;
     if (flags & 1) throw new Error(`The spreadsheet file "${name}" is encrypted and cannot be read.`);
     if (compressedSize > 25 * 1024 * 1024) throw new Error(`The spreadsheet file "${name}" is larger than the 25 MB import limit.`);
     totalSize += uncompressedSize;
@@ -50,16 +50,14 @@ function readHtmlEntries(buffer) {
     if (start + compressedSize > bytes.length) {
       throw new Error(`The spreadsheet file "${name}" is incomplete.`);
     }
-    entries.push({ name, method, compressed: bytes.slice(start, start + compressedSize) });
+    entries.push({ name, method, compressed: bytes.slice(start, start + compressedSize), uncompressedSize });
   }
   return entries;
 }
 
-export async function unzipHtml(buffer) {
-  const entries = readHtmlEntries(buffer);
-  if (!entries.length) {
-    throw new Error("No HTML spreadsheet was found inside this ZIP. Choose the HTML spreadsheet ZIP export.");
-  }
+export async function unzipFiles(buffer, include = () => true) {
+  const entries = readEntries(buffer).filter((entry) => include(entry.name));
+  if (!entries.length) return [];
   const documents = [];
   for (const entry of entries) {
     let contents;
@@ -70,7 +68,18 @@ export async function unzipHtml(buffer) {
     } else {
       throw new Error(`The ZIP compression used for "${entry.name}" is not supported by this browser.`);
     }
-    documents.push({ name: entry.name, html: new TextDecoder("utf-8").decode(contents) });
+    if (entry.uncompressedSize !== contents.length) {
+      throw new Error(`The spreadsheet file "${entry.name}" is incomplete.`);
+    }
+    documents.push({ name: entry.name, text: new TextDecoder("utf-8").decode(contents) });
   }
   return documents;
+}
+
+export async function unzipHtml(buffer) {
+  const documents = await unzipFiles(buffer, (name) => /\.(html?|xhtml)$/i.test(name));
+  if (!documents.length) {
+    throw new Error("No HTML spreadsheet was found inside this ZIP. Choose the HTML spreadsheet ZIP export.");
+  }
+  return documents.map(({ name, text }) => ({ name, html: text }));
 }

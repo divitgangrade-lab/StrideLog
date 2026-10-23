@@ -85,6 +85,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .breadcrumbs strong { color: #4c5851; font-weight: 600; }
 .crumb-divider { color: #c5ccc6; }
 .topbar-actions { display: flex; align-items: center; gap: 18px; }
+.topbar-actions { flex-wrap: wrap; }
 .save-indicator { display: flex; align-items: center; gap: 7px; color: #7e8982; font-size: 10px; }
 .button { display: inline-flex; justify-content: center; align-items: center; gap: 8px; min-height: 37px; padding: 0 13px; border: 1px solid transparent; border-radius: 8px; font-size: 11px; font-weight: 600; cursor: pointer; transition: background .15s, border-color .15s, transform .15s; }
 .button:active { transform: translateY(1px); }
@@ -326,11 +327,11 @@ h1 span { color: var(--green); }
   .roster-name-wrap { max-width: 92px; }
   .roster-group { display: none; }
   .main-panel { min-height: calc(100vh - 108px); margin-left: 0; }
-  .topbar { height: 54px; padding: 0 16px; }
+  .topbar { height: auto; min-height: 54px; flex-wrap: wrap; gap: 7px; padding: 9px 16px; }
   .breadcrumbs { font-size: 10px; }
   .save-indicator { display: none; }
-  .topbar-actions { gap: 0; }
-  .button { min-height: 34px; padding: 0 10px; font-size: 10px; }
+  .topbar-actions { width: 100%; justify-content: flex-end; gap: 6px; }
+  .button { min-height: 32px; padding: 0 9px; font-size: 9px; }
   .page-content { padding: 24px 16px 17px; }
   .welcome-row { align-items: flex-start; flex-direction: column; margin-bottom: 20px; }
   .welcome-row > .button { align-self: flex-start; }

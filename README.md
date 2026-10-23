@@ -30,7 +30,7 @@ No framework installation, database server, or build step is required.
 - **Student removal:** remove a student from **Edit profile**. After confirmation, StrideLog removes the student's assessments, notes, report draft, and saved files from this browser.
 - **Roster controls:** search with name suggestions, filter by class, and sort the student cards by name or recorded scores.
 - **Accessible motion and chart details:** assessment points are keyboard focusable and reveal details when selected. Dashboard sections animate into view, with reduced-motion preferences respected.
-- **Spreadsheet import:** select a ZIP containing an HTML spreadsheet, or select the HTML file itself. StrideLog looks for a `Student Name` header and columns named `Test Number 1`, `Test Number 2`, and so on, with optional `Notes` and `Links to files` columns. A suffix such as `Josh Q2` places assessments in Q2; a name without a quarter suffix is assigned to Q1. Matching students are updated by name while their class groups and saved files are kept.
+- **Spreadsheet template and import:** download the ready-to-fill Excel workbook from the dashboard or [templates/StrideLog-Progress-Report-Template.xlsx](./templates/StrideLog-Progress-Report-Template.xlsx). Import `.xlsx` files directly, or select a ZIP containing an HTML spreadsheet or a standalone HTML spreadsheet. StrideLog looks for a `Student Name` header and columns named `Test Number 1`, `Test Number 2`, and so on, with optional `Notes` and `Links to files` columns. A suffix such as `Jordan Lee Q2` places assessments in Q2; a name without a quarter suffix is assigned to Q1. Matching students are updated by name while their class groups and saved files are kept.
 - **Local persistence:** roster data, test scores, groups, notes, and spreadsheet links are saved in this browser's local storage.
 
 The first launch includes a small example roster modeled on the supplied spreadsheet so the dashboard is ready to explore. Import your own spreadsheet to add or update those records. Use the browser's site-data controls to remove locally saved information.
@@ -41,7 +41,9 @@ StrideLog has no application server or cloud sync. Student records stay in brows
 
 ## Spreadsheet format
 
-The importer reads HTML tables inside a ZIP archive (or a standalone `.html`, `.htm`, or HTML `.xls` file). A header row must include `Student Name` and at least one `Test Number N` column. Test cells can contain a score alone (`80`) or a score followed by a test name (`80 - Unit exam`). Blank test cells are ignored. Student names can end in `Q1`, `Q2`, `Q3`, or `Q4` to assign that row to a quarter. The `Notes` and `Links to files` headers are optional.
+The downloadable Excel template has a `Progress Report` sheet with 30 blank student rows and an `Instructions` sheet. Add one row per student per quarter, using a name suffix such as `Jordan Lee Q1`. The workbook can be imported directly as `.xlsx`.
+
+The importer also reads HTML tables inside a ZIP archive or a standalone `.html`, `.htm`, or HTML `.xls` file. Every format must contain a header row with `Student Name` and at least one `Test Number N` column. Test cells can contain a score alone (`80`) or a score followed by a test name (`80 - Unit exam`). Blank test cells are ignored. Student names can end in `Q1`, `Q2`, `Q3`, or `Q4` to assign that row to a quarter. The `Notes` and `Links to files` headers are optional.
 
 Imports are limited to 25 MB. The ZIP must contain an unencrypted HTML document using the standard stored or DEFLATE compression supported by the browser. Imported links are shown only when they use HTTP or HTTPS.
 
@@ -53,8 +55,10 @@ The editable text report is a working template, not an official VDOE or district
 
 ```sh
 npm test
+python3 -m unittest discover -s tests -p 'test_*.py'
 node --check app.js
 node --check importer.js
+node --check xlsx.js
 ```
 
 ## License

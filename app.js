@@ -1,6 +1,7 @@
 import { parseSpreadsheetRows, QUARTERS } from "./importer.js";
 import { buildProgressReport, reportFileName } from "./report.js";
 import { unzipHtml } from "./zip.js";
+import { parseXlsxRows } from "./xlsx.js";
 
 const STORAGE_KEY = "stridelog-workspace-v1";
 const FILE_DB_NAME = "stridelog-resources";
@@ -1271,14 +1272,17 @@ function mergeImportedStudents(imported) {
 async function importSpreadsheet(file) {
   if (file.size > 25 * 1024 * 1024) throw new Error("Please choose a spreadsheet under 25 MB.");
   let documents;
-  if (/\.zip$/i.test(file.name)) documents = await unzipHtml(await file.arrayBuffer());
+  if (/\.xlsx$/i.test(file.name)) {
+    documents = [{ name: file.name, rows: await parseXlsxRows(await file.arrayBuffer()) }];
+  } else if (/\.zip$/i.test(file.name)) documents = await unzipHtml(await file.arrayBuffer());
   else documents = [{ name: file.name, html: await file.text() }];
 
   const imported = new Map();
   const errors = [];
   for (const documentData of documents) {
     try {
-      const parsed = parseSpreadsheetRows(rowsFromHtml(documentData.html));
+      const rows = documentData.rows || rowsFromHtml(documentData.html);
+      const parsed = parseSpreadsheetRows(rows);
       for (const student of parsed) {
         const key = student.name.toLowerCase();
         if (!imported.has(key)) imported.set(key, student);

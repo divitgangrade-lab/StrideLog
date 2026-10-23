@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="A calm, private workspace for tracking student progress and classroom resources."
+    />
+    <meta name="theme-color" content="#f6f7f4" />
+    <title>StrideLog — Student progress, made clear</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='12' fill='%232f725f'/%3E%3Cpath d='M10 26l7-7 5 4 9-11' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="styles.css" />
+    <script type="module" src="app.js"></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <a class="brand" href="#" aria-label="StrideLog home">
+          <span class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="m3 16 5-5 4 3 8-9"/><path d="M15 5h5v5"/></svg>
+          </span>
+          <span>stride<span class="brand-light">log</span></span>
+        </a>
+
+        <div class="workspace-label">WORKSPACE</div>
+        <nav class="main-nav" aria-label="Main navigation">
+          <button class="nav-link active" id="nav-roster" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M8 9h8M8 13h5M8 17h7"/></svg>
+            <span>Student roster</span>
+            <span class="nav-count" id="roster-count">0</span>
+          </button>
+          <button class="nav-link" id="nav-classes" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7.5A1.5 1.5 0 0 1 4.5 6H10l2 2h7.5A1.5 1.5 0 0 1 21 9.5v9a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18.5z"/></svg>
+            <span>Class groups</span>
+          </button>
+        </nav>
+
+        <div class="section-heading">
+          <span>YOUR STUDENTS</span>
+          <button class="icon-button small" id="add-student" type="button" aria-label="Add student" title="Add student">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+          </button>
+        </div>
+        <div class="student-search">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 4 4"/></svg>
+          <input id="student-search" type="search" placeholder="Find a student..." aria-label="Find a student" />
+          <kbd>/</kbd>
+        </div>
+        <div class="roster-list" id="roster-list" aria-label="Students"></div>
+
+        <div class="sidebar-bottom">
+          <div class="privacy-note">
+            <span class="privacy-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3"/></svg>
+            </span>
+            <span><strong>Your data stays yours</strong><small>Saved privately on this device</small></span>
+          </div>
+          <div class="profile-chip">
+            <span class="avatar teacher-avatar">T</span>
+            <span><strong>Teacher workspace</strong><small>Local account</small></span>
+            <span class="online-dot" title="Saved on this device"></span>
+          </div>
+        </div>
+      </aside>
+
+      <main class="main-panel">
+        <header class="topbar">
+          <div class="breadcrumbs"><span>Workspace</span><span class="crumb-divider">/</span><strong id="breadcrumb-current">Students</strong></div>
+          <div class="topbar-actions">
+            <span class="save-indicator"><span class="online-dot"></span> Saved locally</span>
+            <button class="button button-outline import-trigger" id="import-trigger" type="button">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5"/><path d="M5 14v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4"/></svg>
+              Import spreadsheet
+            </button>
+          </div>
+        </header>
+
+        <section class="page-content">
+          <div class="welcome-row">
+            <div>
+              <div class="eyebrow" id="today-label">YOUR CLASSROOM, AT A GLANCE</div>
+              <h1 id="page-title">Every step forward, <span>in one place.</span></h1>
+              <p class="page-subtitle" id="page-subtitle">A clearer picture of how your students are growing.</p>
+            </div>
+            <button class="button button-primary" id="add-student-main" type="button">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+              Add a student
+            </button>
+          </div>
+
+          <section class="overview-grid" id="overview-grid" aria-label="Classroom overview">
+            <article class="overview-card">
+              <span class="overview-icon green"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 20v-1.8a3.2 3.2 0 0 0-3.2-3.2H7.2A3.2 3.2 0 0 0 4 18.2V20M10 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7ZM16 4.2a3.5 3.5 0 0 1 0 6.8M17 15h.8a3.2 3.2 0 0 1 3.2 3.2V20"/></svg></span>
+              <div><span class="card-label">Students</span><strong class="stat-value" id="stat-students">0</strong><span class="stat-caption">on your roster</span></div>
+            </article>
+            <article class="overview-card">
+              <span class="overview-icon lavender"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V5m0 14h16M7 15l4-4 3 2 5-6"/></svg></span>
+              <div><span class="card-label">Assessments</span><strong class="stat-value" id="stat-assessments">0</strong><span class="stat-caption">scores recorded</span></div>
+            </article>
+            <article class="overview-card">
+              <span class="overview-icon amber"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s7-3.5 7-9V5l-7-2-7 2v7c0 5.5 7 9 7 9Z"/><path d="m9 12 2 2 4-4"/></svg></span>
+              <div><span class="card-label">Class groups</span><strong class="stat-value" id="stat-classes">0</strong><span class="stat-caption">keeping things organized</span></div>
+            </article>
+            <article class="overview-card">
+              <span class="overview-icon blue"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h6"/></svg></span>
+              <div><span class="card-label">Resources</span><strong class="stat-value" id="stat-files">0</strong><span class="stat-caption">files saved securely</span></div>
+            </article>
+          </section>
+
+          <section class="home-view" id="home-view">
+            <div class="panel-heading home-panel-heading"><div><div class="eyebrow">YOUR ROSTER</div><h3>Students at a glance</h3><p>Choose a student to explore their progress and resources.</p></div><span class="home-roster-count" id="home-roster-count"></span></div>
+            <div class="home-student-grid" id="home-student-grid"></div>
+          </section>
+
+          <section class="class-view hidden" id="class-view">
+            <div class="panel-heading">
+              <div><div class="eyebrow">STUDENT ORGANIZATION</div><h2>Class groups</h2><p>Drag a student onto a group to organize your roster.</p></div>
+              <button class="button button-outline" id="add-class" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>New class</button>
+            </div>
+            <div class="class-grid" id="class-grid"></div>
+            <div class="unassigned-drop" id="unassigned-drop">
+              <div class="drop-heading"><span class="drop-icon">↗</span><div><strong>Unassigned students</strong><small>Drag students into a class group</small></div></div>
+              <div class="unassigned-students" id="unassigned-students"></div>
+            </div>
+          </section>
+
+          <section class="student-view hidden" id="student-view">
+            <div class="student-heading">
+              <div class="student-identity">
+                <span class="avatar student-avatar" id="student-avatar">S</span>
+                <div><div class="eyebrow" id="student-class-label">STUDENT PROFILE</div><h2 id="student-name">Student name</h2><div class="student-meta" id="student-meta"></div></div>
+              </div>
+              <button class="button button-outline" id="edit-student" type="button">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 6 4 4M4 20l4-.8L19 8a2.8 2.8 0 0 0-4-4L4 15z"/></svg>
+                Edit profile
+              </button>
+            </div>
+
+            <div class="student-layout">
+              <div class="student-main-column">
+                <section class="panel progress-panel">
+                  <div class="panel-heading chart-heading">
+                    <div><div class="eyebrow">LEARNING JOURNEY</div><h3>Progress over time</h3><p>Assessment scores, oldest to latest</p></div>
+                    <div class="average-pill"><span class="average-dot"></span><span id="average-score">—</span><small>overall average</small></div>
+                  </div>
+                  <div class="chart-container" id="chart-container"></div>
+                </section>
+
+                <section class="panel assessments-panel">
+                  <div class="panel-heading assessments-heading">
+                    <div><div class="eyebrow">ASSESSMENTS</div><h3>Test history</h3><p id="test-history-caption">Scores are grouped by quarter.</p></div>
+                    <button class="button button-primary button-compact" id="add-test" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Add test</button>
+                  </div>
+                  <div class="quarter-tabs" id="quarter-tabs" role="tablist" aria-label="Student resources by quarter"></div>
+                  <div class="tab-panel" id="tab-panel" role="tabpanel"></div>
+                </section>
+              </div>
+              <aside class="student-side-column">
+                <section class="panel details-panel">
+                  <div class="side-panel-title"><span class="side-icon note-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4h8M9 3h6v3H9zM6 5H5v16h14V5h-1M8 11h8M8 15h8M8 19h4"/></svg></span><div><h3>Teacher notes</h3><p>Private to your workspace</p></div></div>
+                  <textarea id="student-notes" class="notes-input" placeholder="Add observations, goals, or a reminder for next time..." aria-label="Teacher notes"></textarea>
+                  <div class="notes-footer"><span class="save-hint" id="notes-save-hint">Saved on this device</span><button class="text-button" id="save-notes" type="button">Save note</button></div>
+                </section>
+                <section class="panel quick-facts">
+                  <div class="side-panel-title"><span class="side-icon facts-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4zM8 9h8M8 13h4"/></svg></span><div><h3>Student overview</h3><p>A quick snapshot</p></div></div>
+                  <div class="fact-row"><span>Assessments</span><strong id="student-test-count">0</strong></div>
+                  <div class="fact-row"><span>Files & links</span><strong id="student-file-count">0</strong></div>
+                  <div class="fact-row"><span>Overall average</span><strong id="student-average">—</strong></div>
+                  <div class="fact-row"><span>Class group</span><strong id="student-group">Unassigned</strong></div>
+                </section>
+              </aside>
+            </div>
+          </section>
+
+          <section class="empty-state hidden" id="empty-state">
+            <div class="empty-illustration"><svg viewBox="0 0 80 80" aria-hidden="true"><rect x="13" y="15" width="54" height="52" rx="12"/><circle cx="31" cy="36" r="7"/><path d="M20 57c2-7 6-10 11-10s9 3 11 10M48 31h13M48 39h10M48 47h7"/></svg></div>
+            <div class="eyebrow">A FRESH START</div><h2>Your roster is ready when you are.</h2><p>Add a student to get started, or import your spreadsheet to set everything up in one go.</p>
+            <div class="empty-actions"><button class="button button-primary" id="empty-add-student" type="button">Add your first student</button><button class="button button-outline" id="empty-import" type="button">Import spreadsheet</button></div>
+          </section>
+
+          <div class="toast hidden" id="toast" role="status" aria-live="polite"></div>
+          <input class="hidden" id="spreadsheet-file" type="file" accept=".zip,.html,.htm,.xls" />
+        </section>
+        <footer class="footer"><span>StrideLog <span class="footer-dot">·</span> Small steps. Meaningful growth.</span><span>Designed for your classroom <span aria-hidden="true">✳</span></span></footer>
+      </main>
+    </div>
+
+    <dialog id="student-dialog" class="app-dialog">
+      <form id="student-form" method="dialog">
+        <div class="dialog-header"><div><div class="eyebrow">STUDENT PROFILE</div><h2 id="student-dialog-title">Add a student</h2></div><button class="icon-button" type="button" data-close-dialog aria-label="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div>
+        <label class="field-label">Student name<input name="name" required maxlength="80" placeholder="e.g. Jordan Lee" /></label>
+        <label class="field-label">Class group <input name="className" maxlength="60" placeholder="e.g. Room 204 (optional)" /></label>
+        <label class="field-label">Teacher notes <textarea name="notes" rows="3" placeholder="Learning goals, observations, and reminders"></textarea></label>
+        <div class="dialog-actions"><button class="button button-outline" type="button" data-close-dialog>Cancel</button><button class="button button-primary" id="save-student-button" type="submit">Add student</button></div>
+      </form>
+    </dialog>
+
+    <dialog id="test-dialog" class="app-dialog">
+      <form id="test-form" method="dialog">
+        <div class="dialog-header"><div><div class="eyebrow">ASSESSMENT TRACKER</div><h2>Add a test score</h2></div><button class="icon-button" type="button" data-close-dialog aria-label="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div>
+        <label class="field-label">Test name<input name="title" required maxlength="100" placeholder="e.g. Fractions quiz" /></label>
+        <div class="field-row"><label class="field-label">Score (%)<input name="score" type="number" min="0" max="100" step="0.1" placeholder="e.g. 85" /></label><label class="field-label">Quarter<select name="quarter"><option>Q1</option><option>Q2</option><option>Q3</option><option>Q4</option></select></label></div>
+        <div class="dialog-actions"><button class="button button-outline" type="button" data-close-dialog>Cancel</button><button class="button button-primary" type="submit">Save test</button></div>
+      </form>
+    </dialog>
+
+    <dialog id="class-dialog" class="app-dialog">
+      <form id="class-form" method="dialog">
+        <div class="dialog-header"><div><div class="eyebrow">CLASS GROUPS</div><h2>Create a class</h2></div><button class="icon-button" type="button" data-close-dialog aria-label="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div>
+        <label class="field-label">Class name<input name="name" required maxlength="60" placeholder="e.g. Room 204" /></label>
+        <div class="dialog-actions"><button class="button button-outline" type="button" data-close-dialog>Cancel</button><button class="button button-primary" type="submit">Create group</button></div>
+      </form>
+    </dialog>
+  </body>
+</html>

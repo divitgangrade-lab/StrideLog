@@ -1,0 +1,11 @@
+{
+  "name": "stridelog",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "A private, browser-based student progress dashboard for teachers.",
+  "scripts": {
+    "start": "python3 -m http.server 5173",
+    "test": "node --test"
+  }
+}

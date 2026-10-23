@@ -1,4 +1,5 @@
 import { parseSpreadsheetRows, QUARTERS } from "./importer.js";
+import { buildProgressReport, reportFileName } from "./report.js";
 import { unzipHtml } from "./zip.js";
 
 const STORAGE_KEY = "stridelog-workspace-v1";
@@ -29,11 +30,15 @@ document.body.append(resourceFileInput);
 
 let toastTimer;
 let noteSaveTimer;
+let reportSaveTimer;
 let fileDatabasePromise;
+let revealObserver;
 let activeFileUrls = [];
 let activeTab = "Q1";
 let currentView = "home";
 let selectedStudentId = null;
+let composerMinimized = false;
+let composerClosed = true;
 let data;
 
 function id() {
@@ -131,6 +136,7 @@ function loadWorkspace() {
     if (!Array.isArray(parsed.students) || !Array.isArray(parsed.classes)) {
       throw new Error("The saved workspace has an invalid format.");
     }
+    parsed.reportDrafts ||= {};
     for (const student of parsed.students) {
       if (!student.id || !student.name || !student.quarters) {
         throw new Error("A student record in the saved workspace is incomplete.");
@@ -179,6 +185,12 @@ function getSelectedStudent() {
 function getClassNames() {
   return [...new Set([...data.classes, ...data.students.map((student) => student.className).filter(Boolean)])]
     .sort((a, b) => a.localeCompare(b));
+}
+
+function matchesClassFilter(student, filter) {
+  if (filter === "all") return true;
+  if (filter === "unassigned") return !student.className;
+  return filter.startsWith("class:") && student.className === filter.slice(6);
 }
 
 function setText(selector, value) {
@@ -231,9 +243,19 @@ function createRosterButton(student, index, home = false) {
 
 function renderRoster() {
   const query = studentSearch.value.trim().toLowerCase();
+  const classFilter = document.querySelector("#sidebar-class-filter").value;
+  const suggestions = document.querySelector("#student-suggestions");
+  suggestions.replaceChildren();
+  [...data.students].sort((a, b) => a.name.localeCompare(b.name)).forEach((student) => {
+    const option = document.createElement("option");
+    option.value = student.name;
+    option.label = student.className || "Unassigned";
+    suggestions.append(option);
+  });
   const students = [...data.students]
     .sort((a, b) => a.name.localeCompare(b.name))
-    .filter((student) => `${student.name} ${student.className}`.toLowerCase().includes(query));
+    .filter((student) => `${student.name} ${student.className}`.toLowerCase().includes(query))
+    .filter((student) => matchesClassFilter(student, classFilter));
   studentList.replaceChildren();
   if (!students.length) {
     const empty = document.createElement("div");
@@ -244,6 +266,22 @@ function renderRoster() {
     students.forEach((student, index) => studentList.append(createRosterButton(student, index)));
   }
   setText("#roster-count", String(data.students.length));
+  renderClassFilterOptions("#sidebar-class-filter", "All classes");
+}
+
+function renderClassFilterOptions(selector, allLabel) {
+  const select = document.querySelector(selector);
+  if (!select) return;
+  const previous = select.value || "all";
+  const options = [["all", allLabel], ["unassigned", "Unassigned"], ...getClassNames().map((name) => [`class:${name}`, name])];
+  select.replaceChildren();
+  options.forEach(([value, label]) => {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = label;
+    select.append(option);
+  });
+  select.value = options.some(([value]) => value === previous) ? previous : "all";
 }
 
 function renderOverview() {
@@ -255,11 +293,28 @@ function renderOverview() {
 }
 
 function renderHome() {
-  const sorted = [...data.students].sort((a, b) => a.name.localeCompare(b.name));
+  renderClassFilterOptions("#home-class-filter", "All students");
+  const classFilter = document.querySelector("#home-class-filter").value;
+  const sort = document.querySelector("#home-sort").value;
+  const sorted = [...data.students]
+    .filter((student) => matchesClassFilter(student, classFilter))
+    .sort((a, b) => {
+      if (sort === "average-desc") return (averageFor(b) ?? -1) - (averageFor(a) ?? -1) || a.name.localeCompare(b.name);
+      if (sort === "average-asc") return (averageFor(a) ?? 101) - (averageFor(b) ?? 101) || a.name.localeCompare(b.name);
+      if (sort === "latest-desc") return (scoredAssessments(b).at(-1)?.score ?? -1) - (scoredAssessments(a).at(-1)?.score ?? -1) || a.name.localeCompare(b.name);
+      return a.name.localeCompare(b.name);
+    });
   setText("#home-roster-count", `${sorted.length} ${sorted.length === 1 ? "student" : "students"}`);
   const grid = document.querySelector("#home-student-grid");
   grid.replaceChildren();
-  sorted.forEach((student, index) => grid.append(createRosterButton(student, index, true)));
+  if (!sorted.length) {
+    const empty = document.createElement("div");
+    empty.className = "roster-empty";
+    empty.textContent = "No students in this group yet.";
+    grid.append(empty);
+  } else {
+    sorted.forEach((student, index) => grid.append(createRosterButton(student, index, true)));
+  }
 }
 
 function addSvg(parent, tag, attributes = {}, text = "") {
@@ -273,6 +328,7 @@ function addSvg(parent, tag, attributes = {}, text = "") {
 function renderChart(student) {
   const container = document.querySelector("#chart-container");
   container.replaceChildren();
+  document.querySelector("#chart-point-detail").classList.add("hidden");
   const assessments = scoredAssessments(student);
   const average = averageFor(student);
   setText("#average-score", average === null ? "—" : formatScore(average));
@@ -327,8 +383,20 @@ function renderChart(student) {
   addSvg(svg, "polyline", { points: points.map((point) => `${point.x},${point.y}`).join(" "), class: "chart-line" });
 
   points.forEach(({ x, y, assessment }, index) => {
-    const circle = addSvg(svg, "circle", { cx: x, cy: y, r: 4, class: "chart-point" });
+    const circle = addSvg(svg, "circle", {
+      cx: x, cy: y, r: 4, class: "chart-point", tabindex: "0", role: "button",
+      "aria-label": `${assessment.quarter}, ${assessment.title}: ${formatScore(assessment.score)}. Activate for details.`,
+    });
     addSvg(circle, "title", {}, `${assessment.quarter} · ${assessment.title}: ${formatScore(assessment.score)}`);
+    const showDetail = () => {
+      const detail = document.querySelector("#chart-point-detail");
+      const averageDifference = average === null ? "" : ` Overall average: ${formatScore(average)}.`;
+      detail.textContent = `${assessment.quarter} · ${assessment.title} · ${formatScore(assessment.score)}.${averageDifference}`;
+      detail.classList.remove("hidden");
+    };
+    circle.addEventListener("focus", showDetail);
+    circle.addEventListener("mouseenter", showDetail);
+    circle.addEventListener("click", showDetail);
     const label = assessments.length > 7
       ? `${assessment.quarter} · ${index + 1}`
       : `${assessment.quarter} · ${assessment.title}`.slice(0, 16);
@@ -512,6 +580,32 @@ async function deleteStudentFile(fileId) {
   });
 }
 
+async function deleteFilesForStudent(studentId) {
+  const db = await getFileDatabase();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(FILE_STORE_NAME, "readwrite");
+    const store = transaction.objectStore(FILE_STORE_NAME);
+    const request = store.index("studentId").getAllKeys(studentId);
+    request.onsuccess = () => request.result.forEach((fileId) => store.delete(fileId));
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error || new Error("Could not remove this student's saved files."));
+    transaction.onabort = () => reject(transaction.error || new Error("Could not remove this student's saved files."));
+  });
+}
+
+async function restoreStudentFiles(files) {
+  if (!files.length) return;
+  const db = await getFileDatabase();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(FILE_STORE_NAME, "readwrite");
+    const store = transaction.objectStore(FILE_STORE_NAME);
+    files.forEach((file) => store.put(file));
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error || new Error("Could not restore the student's saved files."));
+    transaction.onabort = () => reject(transaction.error || new Error("Could not restore the student's saved files."));
+  });
+}
+
 function formatFileSize(size) {
   if (size < 1024) return `${size} B`;
   if (size < 1024 * 1024) return `${(size / 1024).toFixed(0)} KB`;
@@ -556,7 +650,7 @@ async function renderTabPanel(student) {
   drop.type = "button";
   drop.className = "file-drop";
   drop.dataset.action = "upload-files";
-  drop.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5M5 14v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4"/></svg><span>Drop files here or browse</span>';
+  drop.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5M5 14v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4"/></svg><span>${quarter === "Misc files" ? "Add PDFs, IEPs, and other files" : "Drop files here or browse"}</span>`;
   panel.append(drop);
 
   try {
@@ -669,6 +763,70 @@ function renderStudent() {
     .catch((error) => showToast(`Could not count student files: ${error.message}`, true));
   studentView.dataset.activeTab = activeTab;
   document.querySelector("#breadcrumb-current").textContent = student.name;
+}
+
+function renderReportComposer() {
+  const student = getSelectedStudent();
+  const composer = document.querySelector("#report-composer");
+  const launcher = document.querySelector("#open-report-composer");
+  const available = currentView === "student" && student;
+  launcher.classList.toggle("hidden", !available || !composerClosed);
+  composer.classList.toggle("hidden", !available || composerClosed);
+  composer.classList.toggle("minimized", composerMinimized);
+  composer.setAttribute("aria-hidden", String(!available || composerClosed));
+  document.querySelector("#composer-minimize").setAttribute(
+    "aria-label",
+    composerMinimized ? "Restore progress report" : "Minimize progress report",
+  );
+  document.querySelector("#composer-minimize").title = composerMinimized ? "Restore" : "Minimize";
+  if (!available || composerClosed) return;
+
+  setText("#composer-student-name", student.name);
+  const drafts = data.reportDrafts || (data.reportDrafts = {});
+  if (document.querySelector("#report-editor").dataset.studentId !== student.id) {
+    document.querySelector("#report-editor").value = drafts[student.id] || buildProgressReport(student);
+    document.querySelector("#report-editor").dataset.studentId = student.id;
+    setText("#report-save-hint", drafts[student.id] ? "Draft saved on this device" : "New draft");
+  }
+}
+
+function openReportComposer() {
+  if (!getSelectedStudent()) return;
+  composerClosed = false;
+  composerMinimized = false;
+  renderReportComposer();
+  document.querySelector("#report-editor").focus();
+}
+
+function saveReportDraft() {
+  const studentId = document.querySelector("#report-editor").dataset.studentId;
+  if (!studentId) return;
+  const drafts = data.reportDrafts || (data.reportDrafts = {});
+  drafts[studentId] = document.querySelector("#report-editor").value;
+  setText("#report-save-hint", persist() ? "Draft saved on this device" : "Could not save draft");
+}
+
+function scheduleReportSave() {
+  setText("#report-save-hint", "Saving…");
+  window.clearTimeout(reportSaveTimer);
+  reportSaveTimer = window.setTimeout(saveReportDraft, 450);
+}
+
+function exportProgressReport() {
+  const editor = document.querySelector("#report-editor");
+  const student = data.students.find((entry) => entry.id === editor.dataset.studentId);
+  if (!student) {
+    showToast("Select a student before exporting a progress report.", true);
+    return;
+  }
+  const blob = new Blob([editor.value], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = reportFileName(student.name);
+  link.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  showToast("Progress report exported as a text file.");
 }
 
 function renderClasses() {
@@ -813,9 +971,38 @@ function render() {
     updatePageTitle("Make room for ", "every win.");
     setText("#page-subtitle", "Start with one student, or import your spreadsheet.");
   }
+  renderReportComposer();
+  applyScrollReveals();
+}
+
+function applyScrollReveals() {
+  const targets = document.querySelectorAll(
+    ".overview-card, .home-view, .home-student-card, .student-view .panel, .class-card, .unassigned-drop, .empty-state",
+  );
+  if (!("IntersectionObserver" in window) || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    targets.forEach((target) => target.classList.add("is-visible"));
+    return;
+  }
+  revealObserver ||= new IntersectionObserver((entries) => {
+    entries.forEach((entry) => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add("is-visible");
+        revealObserver.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.08 });
+  targets.forEach((target) => {
+    target.classList.add("reveal");
+    if (!target.classList.contains("is-visible")) revealObserver.observe(target);
+  });
 }
 
 function selectStudent(studentId) {
+  if (selectedStudentId !== studentId) {
+    window.clearTimeout(reportSaveTimer);
+    saveReportDraft();
+    document.querySelector("#report-editor").dataset.studentId = "";
+  }
   selectedStudentId = studentId;
   activeTab = "Q1";
   currentView = "student";
@@ -824,6 +1011,11 @@ function selectStudent(studentId) {
 
 function showView(view) {
   currentView = view;
+  if (view !== "student") {
+    composerClosed = true;
+    window.clearTimeout(reportSaveTimer);
+    saveReportDraft();
+  }
   if (view === "home") selectedStudentId = null;
   render();
 }
@@ -927,6 +1119,7 @@ function editStudentProfile() {
   form.elements.className.value = student.className || "";
   form.elements.notes.value = student.notes || "";
   form.dataset.editingStudent = student.id;
+  document.querySelector("#delete-student").classList.remove("hidden");
   setText("#student-dialog-title", "Edit student");
   setText("#save-student-button", "Save changes");
   studentDialog.showModal();
@@ -936,6 +1129,7 @@ function openAddStudentDialog() {
   const form = document.querySelector("#student-form");
   form.reset();
   delete form.dataset.editingStudent;
+  document.querySelector("#delete-student").classList.add("hidden");
   form.elements.name.setCustomValidity("");
   setText("#student-dialog-title", "Add a student");
   setText("#save-student-button", "Add student");
@@ -966,9 +1160,72 @@ function saveStudentForm(event) {
   persist();
   form.reset();
   delete form.dataset.editingStudent;
+  document.querySelector("#delete-student").classList.add("hidden");
   studentDialog.close();
   render();
   showToast(`${student.name}'s profile updated.`);
+}
+
+async function removeSelectedStudent() {
+  const student = getSelectedStudent();
+  if (!student) return;
+  const assessmentCount = allAssessments(student).length;
+  const confirmed = window.confirm(
+    `Remove ${student.name} from this workspace? This permanently deletes ${assessmentCount} assessment${assessmentCount === 1 ? "" : "s"}, notes, report drafts, and saved files for this student.`,
+  );
+  if (!confirmed) return;
+
+  const form = document.querySelector("#student-form");
+  const deleteButton = document.querySelector("#delete-student");
+  deleteButton.disabled = true;
+  deleteButton.textContent = "Removing student…";
+  window.clearTimeout(reportSaveTimer);
+  const index = data.students.findIndex((entry) => entry.id === student.id);
+  const previousDraft = data.reportDrafts?.[student.id];
+  let files = [];
+  try {
+    files = (await getAllStoredFiles()).filter((file) => file.studentId === student.id);
+    await deleteFilesForStudent(student.id);
+    data.students.splice(index, 1);
+    if (data.reportDrafts) delete data.reportDrafts[student.id];
+    document.querySelector("#report-editor").dataset.studentId = "";
+    selectedStudentId = null;
+    currentView = "home";
+    if (!persist()) {
+      data.students.splice(index, 0, student);
+      if (previousDraft !== undefined) data.reportDrafts[student.id] = previousDraft;
+      selectedStudentId = student.id;
+      currentView = "student";
+      await restoreStudentFiles(files);
+      return;
+    }
+    composerClosed = true;
+    form.reset();
+    delete form.dataset.editingStudent;
+    document.querySelector("#delete-student").classList.add("hidden");
+    studentDialog.close();
+    render();
+    showToast(`${student.name} and their saved student files were removed.`);
+  } catch (error) {
+    if (index >= 0 && !data.students.some((entry) => entry.id === student.id)) {
+      data.students.splice(index, 0, student);
+      if (previousDraft !== undefined) data.reportDrafts[student.id] = previousDraft;
+      selectedStudentId = student.id;
+      currentView = "student";
+      try {
+        await restoreStudentFiles(files);
+      } catch (restoreError) {
+        showToast(`Student removal failed: ${error.message}. Saved file restoration also failed: ${restoreError.message}`, true);
+        render();
+        return;
+      }
+    }
+    showToast(`Could not remove student: ${error.message}`, true);
+    render();
+  } finally {
+    deleteButton.disabled = false;
+    deleteButton.textContent = "Remove student and saved files";
+  }
 }
 
 function rowsFromHtml(html) {
@@ -1070,9 +1327,28 @@ function bindEvents() {
   document.querySelector("#student-notes").addEventListener("input", updateStudentNotes);
   document.querySelector("#student-form").addEventListener("submit", saveStudentForm);
   document.querySelector("#student-form").elements.name.addEventListener("input", (event) => event.currentTarget.setCustomValidity(""));
+  document.querySelector("#delete-student").addEventListener("click", () => void removeSelectedStudent());
   document.querySelector("#test-form").addEventListener("submit", addTestFromForm);
   document.querySelector("#class-form").addEventListener("submit", addClassFromForm);
   document.querySelector("#class-form").elements.name.addEventListener("input", (event) => event.currentTarget.setCustomValidity(""));
+  studentSearch.addEventListener("input", renderRoster);
+  document.querySelector("#sidebar-class-filter").addEventListener("change", renderRoster);
+  document.querySelector("#home-class-filter").addEventListener("change", renderHome);
+  document.querySelector("#home-sort").addEventListener("change", renderHome);
+  document.querySelector("#open-report-composer").addEventListener("click", openReportComposer);
+  document.querySelector("#report-editor").addEventListener("input", scheduleReportSave);
+  document.querySelector("#export-report").addEventListener("click", exportProgressReport);
+  document.querySelector("#composer-minimize").addEventListener("click", () => {
+    composerMinimized = !composerMinimized;
+    renderReportComposer();
+  });
+  document.querySelector("#composer-close").addEventListener("click", () => {
+    window.clearTimeout(reportSaveTimer);
+    saveReportDraft();
+    composerClosed = true;
+    composerMinimized = false;
+    renderReportComposer();
+  });
   document.querySelector("#quarter-tabs").addEventListener("click", (event) => {
     const tab = event.target.closest("[data-quarter]");
     if (!tab || !QUARTER_TABS.includes(tab.dataset.quarter)) return;
@@ -1105,7 +1381,6 @@ function bindEvents() {
       showToast(`Spreadsheet import failed: ${error.message}`, true);
     }
   });
-  studentSearch.addEventListener("input", renderRoster);
   studentList.addEventListener("click", (event) => {
     const button = event.target.closest("[data-student-id]");
     if (button) selectStudent(button.dataset.studentId);

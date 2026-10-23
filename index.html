@@ -44,9 +44,14 @@
         </div>
         <div class="student-search">
           <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 4 4"/></svg>
-          <input id="student-search" type="search" placeholder="Find a student..." aria-label="Find a student" />
+          <input id="student-search" type="search" list="student-suggestions" placeholder="Find a student..." aria-label="Find a student" />
           <kbd>/</kbd>
         </div>
+        <datalist id="student-suggestions"></datalist>
+        <label class="sidebar-filter-label" for="sidebar-class-filter">Filter by class</label>
+        <select class="sidebar-class-filter" id="sidebar-class-filter" aria-label="Filter student list by class">
+          <option value="all">All classes</option>
+        </select>
         <div class="roster-list" id="roster-list" aria-label="Students"></div>
 
         <div class="sidebar-bottom">
@@ -110,6 +115,10 @@
 
           <section class="home-view" id="home-view">
             <div class="panel-heading home-panel-heading"><div><div class="eyebrow">YOUR ROSTER</div><h3>Students at a glance</h3><p>Choose a student to explore their progress and resources.</p></div><span class="home-roster-count" id="home-roster-count"></span></div>
+            <div class="roster-controls">
+              <label>Class <select id="home-class-filter" aria-label="Filter roster by class"><option value="all">All students</option></select></label>
+              <label>Sort by <select id="home-sort"><option value="name">Name (A–Z)</option><option value="average-desc">Average score (high to low)</option><option value="average-asc">Average score (low to high)</option><option value="latest-desc">Latest score (high to low)</option></select></label>
+            </div>
             <div class="home-student-grid" id="home-student-grid"></div>
           </section>
 
@@ -145,6 +154,7 @@
                     <div class="average-pill"><span class="average-dot"></span><span id="average-score">—</span><small>overall average</small></div>
                   </div>
                   <div class="chart-container" id="chart-container"></div>
+                  <div class="chart-point-detail hidden" id="chart-point-detail" role="status" aria-live="polite"></div>
                 </section>
 
                 <section class="panel assessments-panel">
@@ -193,6 +203,7 @@
         <label class="field-label">Class group <input name="className" maxlength="60" placeholder="e.g. Room 204 (optional)" /></label>
         <label class="field-label">Teacher notes <textarea name="notes" rows="3" placeholder="Learning goals, observations, and reminders"></textarea></label>
         <div class="dialog-actions"><button class="button button-outline" type="button" data-close-dialog>Cancel</button><button class="button button-primary" id="save-student-button" type="submit">Add student</button></div>
+        <button class="danger-button hidden" id="delete-student" type="button">Remove student and saved files</button>
       </form>
     </dialog>
 
@@ -212,5 +223,22 @@
         <div class="dialog-actions"><button class="button button-outline" type="button" data-close-dialog>Cancel</button><button class="button button-primary" type="submit">Create group</button></div>
       </form>
     </dialog>
+
+    <section class="report-composer hidden" id="report-composer" aria-label="Progress report composer" aria-hidden="true">
+      <header class="composer-header" id="composer-drag-handle">
+        <span class="composer-icon" aria-hidden="true">✎</span>
+        <div class="composer-heading"><strong>Progress report</strong><small id="composer-student-name">Student</small></div>
+        <div class="composer-actions">
+          <button class="composer-action" id="composer-minimize" type="button" aria-label="Minimize progress report" title="Minimize">−</button>
+          <button class="composer-action" id="composer-close" type="button" aria-label="Close progress report" title="Close">×</button>
+        </div>
+      </header>
+      <div class="composer-body" id="composer-body">
+        <p class="composer-notice">Editable working template · Add IEP details before sharing</p>
+        <textarea class="report-editor" id="report-editor" aria-label="Editable student progress report" spellcheck="true"></textarea>
+        <div class="composer-footer"><span class="save-hint" id="report-save-hint">Saved on this device</span><button class="button button-primary button-compact" id="export-report" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11m0 0 4-4m-4 4-4-4M5 20h14"/></svg>Export .txt</button></div>
+      </div>
+    </section>
+    <button class="report-launcher hidden" id="open-report-composer" type="button"><span aria-hidden="true">✎</span> Write progress report</button>
   </body>
 </html>

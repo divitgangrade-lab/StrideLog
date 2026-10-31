@@ -22,6 +22,7 @@
           </span>
           <span>stride<span class="brand-light">log</span></span>
         </a>
+        <button class="theme-toggle" id="theme-toggle" type="button" aria-pressed="false">Use dark mode</button>
 
         <div class="workspace-label">WORKSPACE</div>
         <nav class="main-nav" aria-label="Main navigation">
@@ -74,7 +75,10 @@
           <div class="breadcrumbs"><span>Workspace</span><span class="crumb-divider">/</span><strong id="breadcrumb-current">Students</strong></div>
           <div class="topbar-actions">
             <span class="save-indicator" role="status" aria-live="polite"><span class="online-dot" id="save-status-dot"></span><span id="save-status-text">Saved locally</span></span>
+            <button class="button button-outline hidden" id="resolve-conflict" type="button">⚠ Review changes</button>
             <button class="button button-outline tutorial-trigger" id="tutorial-trigger" type="button" aria-label="Show StrideLog tutorial">?</button>
+            <button class="button button-outline" id="export-workspace" type="button">Export workspace JSON</button>
+            <button class="button button-outline" id="import-workspace" type="button">Import workspace JSON</button>
             <button class="button button-outline import-trigger" id="import-trigger" type="button">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5"/><path d="M5 14v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4"/></svg>
               Import spreadsheet
@@ -115,6 +119,19 @@
               <span class="overview-icon blue"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h6"/></svg></span>
               <div><span class="card-label">Resources</span><strong class="stat-value" id="stat-files">0</strong><span class="stat-caption">files saved securely</span></div>
             </article>
+          </section>
+
+          <section class="panel analytics-panel" id="analytics-panel" aria-label="Class performance heatmap">
+            <div class="panel-heading">
+              <div><div class="eyebrow">CLASSROOM INSIGHTS</div><h3>Performance by assessment category</h3><p id="analytics-summary">Recent score patterns appear here as you record assessments.</p></div>
+              <span class="heatmap-key"><span class="heatmap-key-low">Needs support</span><span class="heatmap-key-mid">Developing</span><span class="heatmap-key-high">Strong</span></span>
+            </div>
+            <div class="heatmap-scroll">
+              <table class="heatmap-table">
+                <thead><tr><th scope="col">Student</th><th scope="col">Reading</th><th scope="col">Writing</th><th scope="col">Math</th><th scope="col">Science</th><th scope="col">Other</th><th scope="col">Recent trend</th></tr></thead>
+                <tbody id="analytics-heatmap-body"></tbody>
+              </table>
+            </div>
           </section>
 
           <section class="home-view" id="home-view">
@@ -159,6 +176,8 @@
                   </div>
                   <div class="chart-container" id="chart-container"></div>
                   <div class="chart-point-detail hidden" id="chart-point-detail" role="status" aria-live="polite"></div>
+                  <div class="benchmark-heading"><strong>Quarterly growth vs. class</strong><span><i class="benchmark-student-swatch"></i>Student <i class="benchmark-class-swatch"></i>Class average</span></div>
+                  <div class="benchmark-chart-container" id="benchmark-chart-container"></div>
                 </section>
 
                 <section class="panel assessments-panel">
@@ -216,6 +235,7 @@
         <div class="dialog-header"><div><div class="eyebrow">ASSESSMENT TRACKER</div><h2>Add a test score</h2></div><button class="icon-button" type="button" data-close-dialog aria-label="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div>
         <label class="field-label">Test name<input name="title" required maxlength="100" placeholder="e.g. Fractions quiz" /></label>
         <div class="field-row"><label class="field-label">Score (%)<input name="score" type="number" min="0" max="100" step="0.1" placeholder="e.g. 85" /></label><label class="field-label">Quarter<select name="quarter"><option>Q1</option><option>Q2</option><option>Q3</option><option>Q4</option></select></label></div>
+        <label class="field-label">Assessment category<select name="category"><option>Reading</option><option>Writing</option><option>Math</option><option>Science</option><option selected>Other</option></select></label>
         <div class="dialog-actions"><button class="button button-outline" type="button" data-close-dialog>Cancel</button><button class="button button-primary" type="submit">Save test</button></div>
       </form>
     </dialog>
@@ -240,7 +260,7 @@
       <div class="composer-body" id="composer-body">
         <p class="composer-notice">Editable working template · Add IEP details before sharing</p>
         <textarea class="report-editor" id="report-editor" aria-label="Editable student progress report" spellcheck="true"></textarea>
-        <div class="composer-footer"><span class="save-hint" id="report-save-hint">Saved on this device</span><button class="button button-primary button-compact" id="export-report" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11m0 0 4-4m-4 4-4-4M5 20h14"/></svg>Export .txt</button></div>
+        <div class="composer-footer"><span class="save-hint" id="report-save-hint">Saved on this device</span><div class="report-export-actions"><button class="button button-outline button-compact" id="print-report" type="button">Print / Save PDF</button><button class="button button-primary button-compact" id="export-report" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11m0 0 4-4m-4 4-4-4M5 20h14"/></svg>Export .txt</button></div></div>
       </div>
     </section>
     <button class="report-launcher hidden" id="open-report-composer" type="button"><span aria-hidden="true">✎</span> Write progress report</button>
@@ -260,6 +280,14 @@
       </div>
     </section>
 
+    <input class="hidden" id="workspace-backup-file" type="file" accept="application/json,.json" />
+    <dialog class="command-dialog" id="command-dialog" aria-labelledby="command-title">
+      <div class="command-header"><h2 id="command-title">Quick actions</h2><button class="icon-button" id="command-close" type="button" aria-label="Close command palette">×</button></div>
+      <label class="sr-only" for="command-search">Search students and actions</label>
+      <input id="command-search" type="search" placeholder="Search students or actions..." autocomplete="off" />
+      <div class="command-results" id="command-results"></div>
+      <p class="command-hint">Press <kbd>Esc</kbd> to close</p>
+    </dialog>
     <div class="tour-backdrop hidden" id="tour-backdrop"></div>
     <section class="tour-card hidden" id="tour-card" role="dialog" aria-modal="true" aria-labelledby="tour-title" aria-describedby="tour-description">
       <div class="tour-progress" id="tour-progress">WELCOME</div>

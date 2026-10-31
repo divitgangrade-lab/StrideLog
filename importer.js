@@ -31,6 +31,7 @@ function parseAssessment(value, number) {
     id: `import-${number}-${crypto.randomUUID()}`,
     title,
     score,
+    category: "Other",
   };
 }
 

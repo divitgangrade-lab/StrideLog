@@ -3,12 +3,16 @@ import { buildProgressReport, reportFileName } from "./report.js";
 import { unzipHtml } from "./zip.js";
 import { parseXlsxRows } from "./xlsx.js";
 import { officeDocumentPreview } from "./file-preview.js";
+import { createBackupDocument, parseBackupDocument } from "./workspace-backup.js";
+import { isDecliningTrend, scoreTrendFor } from "./analytics.js";
 
 const STORAGE_KEY = "stridelog-workspace-v1";
 const TUTORIAL_KEY = "stridelog-tutorial-completed-v1";
+const THEME_KEY = "stridelog-theme-v1";
 const FILE_DB_NAME = "stridelog-resources";
 const FILE_STORE_NAME = "student-files";
 const QUARTER_TABS = [...QUARTERS, "Misc files"];
+const ASSESSMENT_CATEGORIES = ["Reading", "Writing", "Math", "Science", "Other"];
 const AVATAR_TONES = ["", "tone-1", "tone-2", "tone-3", "tone-4"];
 
 const studentList = document.querySelector("#roster-list");
@@ -23,6 +27,7 @@ const studentDialog = document.querySelector("#student-dialog");
 const testDialog = document.querySelector("#test-dialog");
 const classDialog = document.querySelector("#class-dialog");
 const spreadsheetFile = document.querySelector("#spreadsheet-file");
+const workspaceBackupFile = document.querySelector("#workspace-backup-file");
 const resourceFileInput = document.createElement("input");
 resourceFileInput.type = "file";
 resourceFileInput.multiple = true;
@@ -49,6 +54,7 @@ let composerMinimized = false;
 let composerClosed = true;
 let tutorialIndex = 0;
 let tutorialOpen = false;
+let externalChangesDetected = false;
 let data;
 
 const TUTORIAL_STEPS = [
@@ -88,8 +94,8 @@ function id() {
   return crypto.randomUUID();
 }
 
-function makeAssessment(title, score) {
-  return { id: id(), title, score };
+function makeAssessment(title, score, category = "Other") {
+  return { id: id(), title, score, category };
 }
 
 function makeStudent(name, className = "", notes = "") {
@@ -157,8 +163,88 @@ function showToast(message, isError = false) {
   toastTimer = window.setTimeout(() => toast.classList.add("hidden"), 4500);
 }
 
+function applyTheme(theme, save = false) {
+  const isDark = theme === "dark";
+  document.body.dataset.theme = isDark ? "dark" : "light";
+  const toggle = document.querySelector("#theme-toggle");
+  toggle.textContent = isDark ? "Use light mode" : "Use dark mode";
+  toggle.setAttribute("aria-pressed", String(isDark));
+  if (save) {
+    try {
+      localStorage.setItem(THEME_KEY, isDark ? "dark" : "light");
+    } catch (error) {
+      showToast(`Could not save theme preference: ${error.message}`, true);
+    }
+  }
+}
+
+function renderCommandResults() {
+  const query = document.querySelector("#command-search").value.trim().toLowerCase();
+  const results = document.querySelector("#command-results");
+  results.replaceChildren();
+  const commands = [
+    { label: "Open student roster", group: "Navigation", keywords: "home students roster", run: () => showView("home") },
+    { label: "Open class groups", group: "Navigation", keywords: "classes groups", run: () => showView("classes") },
+    { label: "Add a student", group: "Create", keywords: "new student", run: openAddStudentDialog },
+  ];
+  if (getSelectedStudent()) {
+    commands.push({
+      label: `Add assessment for ${getSelectedStudent().name}`,
+      group: "Create",
+      keywords: "test score grade",
+      run: () => document.querySelector("#add-test").click(),
+    });
+  }
+  const matches = [
+    ...commands.filter((command) => `${command.label} ${command.group} ${command.keywords}`.toLowerCase().includes(query))
+      .map((command) => ({ ...command, kind: "command" })),
+    ...data.students
+      .filter((student) => `${student.name} ${student.className}`.toLowerCase().includes(query))
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map((student) => ({ label: student.name, group: student.className || "Unassigned", studentId: student.id, kind: "student" })),
+  ].slice(0, 12);
+
+  if (!matches.length) {
+    const empty = document.createElement("div");
+    empty.className = "command-empty";
+    empty.textContent = "No matching students or actions.";
+    results.append(empty);
+    return;
+  }
+  for (const match of matches) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "command-result";
+    button.addEventListener("click", () => {
+      document.querySelector("#command-dialog").close();
+      if (match.studentId) selectStudent(match.studentId);
+      else match.run();
+    });
+    const label = document.createElement("span");
+    label.textContent = match.label;
+    const group = document.createElement("small");
+    group.textContent = match.group;
+    button.append(label, group);
+    results.append(button);
+  }
+}
+
+function openCommandPalette() {
+  const dialog = document.querySelector("#command-dialog");
+  if (!dialog.open) dialog.showModal();
+  document.querySelector("#command-search").value = "";
+  renderCommandResults();
+  document.querySelector("#command-search").focus();
+}
+
 function persist() {
+  if (externalChangesDetected) {
+    setSaveStatus("Review changes from another tab", true);
+    return false;
+  }
   try {
+    data.lastSavedAt = new Date().toISOString();
+    data.revision = id();
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
     setSaveStatus("Saved on this device");
     return true;
@@ -173,9 +259,42 @@ function setSaveStatus(message, hasError = false) {
   const label = document.querySelector("#save-status-text");
   const dot = document.querySelector("#save-status-dot");
   if (!label || !dot) return;
-  label.textContent = message;
+  const savedAt = data?.lastSavedAt ? new Date(data.lastSavedAt) : null;
+  const timestamp = savedAt && Number.isFinite(savedAt.valueOf())
+    ? ` · ${savedAt.toLocaleString([], { dateStyle: "short", timeStyle: "short" })}`
+    : "";
+  label.textContent = message === "Saved on this device" ? `Saved locally${timestamp}` : message;
   dot.classList.toggle("save-error-dot", hasError);
   dot.classList.toggle("save-pending-dot", message === "Saving…");
+}
+
+function resolveWorkspaceConflict() {
+  const keepLocal = window.confirm(
+    "This workspace changed in another tab. Choose OK to keep this tab's version and replace the newer saved workspace, or Cancel to reload the newer version and discard this tab's unsaved edits.",
+  );
+  if (!keepLocal) {
+    window.location.reload();
+    return;
+  }
+  externalChangesDetected = false;
+  document.querySelector("#resolve-conflict").classList.add("hidden");
+  if (persist()) render();
+}
+
+function watchForExternalChanges() {
+  window.addEventListener("storage", (event) => {
+    if (event.key !== STORAGE_KEY || !event.newValue) return;
+    try {
+      const incoming = JSON.parse(event.newValue);
+      if (incoming.revision && incoming.revision !== data.revision) {
+        externalChangesDetected = true;
+        document.querySelector("#resolve-conflict").classList.remove("hidden");
+        setSaveStatus("Changes conflict with another tab", true);
+      }
+    } catch (error) {
+      showToast(`Could not check workspace changes from another tab: ${error.message}`, true);
+    }
+  });
 }
 
 function loadWorkspace() {
@@ -183,6 +302,8 @@ function loadWorkspace() {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (!saved) {
       const starter = createStarterData();
+      starter.lastSavedAt = new Date().toISOString();
+      starter.revision = id();
       localStorage.setItem(STORAGE_KEY, JSON.stringify(starter));
       return starter;
     }
@@ -190,13 +311,23 @@ function loadWorkspace() {
     if (!Array.isArray(parsed.students) || !Array.isArray(parsed.classes)) {
       throw new Error("The saved workspace has an invalid format.");
     }
+    const needsMetadata = !parsed.lastSavedAt || !parsed.revision;
     parsed.reportDrafts ||= {};
+    parsed.lastSavedAt ||= new Date().toISOString();
+    parsed.revision ||= id();
     for (const student of parsed.students) {
       if (!student.id || !student.name || !student.quarters) {
         throw new Error("A student record in the saved workspace is incomplete.");
       }
       student.links ||= [];
       for (const quarter of QUARTER_TABS) student.quarters[quarter] ||= [];
+    }
+    if (needsMetadata) {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
+      } catch (error) {
+        window.setTimeout(() => showToast(`Could not update workspace save metadata: ${error.message}`, true), 0);
+      }
     }
     return parsed;
   } catch (error) {
@@ -222,6 +353,14 @@ function averageFor(student) {
   const scores = scoredAssessments(student).map((assessment) => assessment.score);
   if (!scores.length) return null;
   return scores.reduce((sum, score) => sum + score, 0) / scores.length;
+}
+
+function scoreTrend(student) {
+  return scoreTrendFor(scoredAssessments(student).map((assessment) => assessment.score));
+}
+
+function isDeclining(student) {
+  return isDecliningTrend(scoredAssessments(student).map((assessment) => assessment.score));
 }
 
 function initials(name) {
@@ -369,6 +508,62 @@ function renderHome() {
   } else {
     sorted.forEach((student, index) => grid.append(createRosterButton(student, index, true)));
   }
+  renderAnalytics();
+}
+
+function renderAnalytics() {
+  const body = document.querySelector("#analytics-heatmap-body");
+  const alertCount = data.students.filter(isDeclining).length;
+  const checkedCount = data.students.filter((student) => scoreTrend(student) !== null).length;
+  const insufficientCount = data.students.length - checkedCount;
+  const summary = alertCount
+    ? `${alertCount} student${alertCount === 1 ? "" : "s"} flagged for a recent downward trend; ${insufficientCount} need at least 3 scores for trend analysis.`
+    : `${checkedCount} student${checkedCount === 1 ? "" : "s"} checked with no downward trend flagged; ${insufficientCount} need at least 3 scores.`;
+  setText("#analytics-summary", summary);
+  body.replaceChildren();
+  for (const student of [...data.students].sort((a, b) => a.name.localeCompare(b.name))) {
+    const row = document.createElement("tr");
+    const nameCell = document.createElement("th");
+    nameCell.scope = "row";
+    const studentButton = document.createElement("button");
+    studentButton.type = "button";
+    studentButton.className = "heatmap-student-link";
+    studentButton.textContent = student.name;
+    studentButton.addEventListener("click", () => selectStudent(student.id));
+    nameCell.append(studentButton);
+    row.append(nameCell);
+
+    for (const category of ASSESSMENT_CATEGORIES) {
+      const scores = scoredAssessments(student)
+        .filter((assessment) => (assessment.category || "Other") === category)
+        .map((assessment) => assessment.score);
+      const cell = document.createElement("td");
+      if (scores.length) {
+        const average = scores.reduce((sum, score) => sum + score, 0) / scores.length;
+        cell.className = `heatmap-cell ${average >= 80 ? "heatmap-high" : average >= 60 ? "heatmap-mid" : "heatmap-low"}`;
+        cell.textContent = formatScore(average);
+        cell.setAttribute("aria-label", `${student.name}, ${category}: average ${formatScore(average)} across ${scores.length} assessments`);
+        cell.title = `${scores.length} assessment${scores.length === 1 ? "" : "s"}`;
+      } else {
+        cell.className = "heatmap-cell heatmap-empty";
+        cell.textContent = "—";
+        cell.setAttribute("aria-label", `${student.name}, ${category}: no scored assessments`);
+      }
+      row.append(cell);
+    }
+
+    const trendCell = document.createElement("td");
+    if (isDeclining(student)) {
+      trendCell.className = "trend-warning";
+      trendCell.textContent = "↓ Check in";
+      trendCell.setAttribute("aria-label", "Recent scores are trending down");
+    } else {
+      trendCell.className = "trend-steady";
+      trendCell.textContent = scoreTrend(student) === null ? "—" : "Steady";
+    }
+    row.append(trendCell);
+    body.append(row);
+  }
 }
 
 function addSvg(parent, tag, attributes = {}, text = "") {
@@ -402,6 +597,81 @@ function renderChart(student) {
     empty.append(icon, title, caption);
     container.append(empty);
     return;
+  }
+
+  function renderBenchmarkChart(student) {
+    const container = document.querySelector("#benchmark-chart-container");
+    container.replaceChildren();
+    const width = 720;
+    const height = 160;
+    const left = 37;
+    const right = 12;
+    const top = 10;
+    const bottom = 28;
+    const plotWidth = width - left - right;
+    const plotHeight = height - top - bottom;
+    const quarterValues = (students) => QUARTERS.map((quarter) => {
+      const scores = students.flatMap((entry) => (entry.quarters[quarter] || [])
+        .filter((assessment) => Number.isFinite(assessment.score))
+        .map((assessment) => assessment.score));
+      return scores.length ? scores.reduce((sum, score) => sum + score, 0) / scores.length : null;
+    });
+    const studentValues = quarterValues([student]);
+    const classValues = quarterValues(data.students);
+    const svg = addSvg(container, "svg", {
+      viewBox: `0 0 ${width} ${height}`,
+      role: "img",
+      "aria-label": "Student quarterly average compared with the class quarterly average",
+    });
+
+    for (const value of [0, 50, 100]) {
+      const y = top + (100 - value) / 100 * plotHeight;
+      addSvg(svg, "line", { x1: left, x2: width - right, y1: y, y2: y, class: "chart-grid-line" });
+      addSvg(svg, "text", { x: left - 8, y: y + 3, "text-anchor": "end", class: "chart-axis-label" }, `${value}%`);
+    }
+    const pointsFor = (values) => values.map((value, index) => value === null ? null : ({
+      x: left + plotWidth * index / (QUARTERS.length - 1),
+      y: top + (100 - value) / 100 * plotHeight,
+      value,
+      quarter: QUARTERS[index],
+    }));
+    const drawSeries = (values, className, label) => {
+      let segment = [];
+      const drawSegment = () => {
+        if (segment.length > 1) {
+          addSvg(svg, "polyline", {
+            points: segment.map((point) => `${point.x},${point.y}`).join(" "),
+            class: className,
+          });
+        }
+        segment = [];
+      };
+      for (const point of pointsFor(values)) {
+        if (!point) {
+          drawSegment();
+          continue;
+        }
+        segment.push(point);
+        const circle = addSvg(svg, "circle", {
+          cx: point.x,
+          cy: point.y,
+          r: label === "Student" ? 4 : 3.5,
+          class: `${className}-point`,
+        });
+        addSvg(circle, "title", {}, `${label} ${point.quarter}: ${formatScore(point.value)}`);
+      }
+      drawSegment();
+    };
+    drawSeries(classValues, "benchmark-class-line", "Class average");
+    drawSeries(studentValues, "benchmark-student-line", "Student");
+    QUARTERS.forEach((quarter, index) => {
+      addSvg(svg, "text", {
+        x: left + plotWidth * index / (QUARTERS.length - 1),
+        y: height - 7,
+        "text-anchor": "middle",
+        class: "chart-x-label",
+      }, quarter);
+    });
   }
 
   const width = 720;
@@ -658,6 +928,77 @@ async function restoreStudentFiles(files) {
     transaction.onerror = () => reject(transaction.error || new Error("Could not restore the student's saved files."));
     transaction.onabort = () => reject(transaction.error || new Error("Could not restore the student's saved files."));
   });
+}
+
+async function replaceAllStoredFiles(files) {
+  const db = await getFileDatabase();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(FILE_STORE_NAME, "readwrite");
+    const store = transaction.objectStore(FILE_STORE_NAME);
+    store.clear();
+    files.forEach((file) => store.put(file));
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error || new Error("Could not restore saved files."));
+    transaction.onabort = () => reject(transaction.error || new Error("Could not restore saved files."));
+  });
+}
+
+async function exportWorkspace() {
+  const files = await getAllStoredFiles();
+  const snapshot = JSON.parse(JSON.stringify(data));
+  const backup = await createBackupDocument(snapshot, files);
+  const blob = new Blob([JSON.stringify(backup)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `stridelog-workspace-${new Date().toISOString().slice(0, 10)}.json`;
+  anchor.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  showToast(`Workspace backup exported, including ${files.length} saved file${files.length === 1 ? "" : "s"}.`);
+}
+
+async function importWorkspace(file) {
+  if (file.size > 140 * 1024 * 1024) {
+    throw new Error("Please choose a workspace backup under 140 MB.");
+  }
+  const backup = await parseBackupDocument(await file.text());
+  const studentCount = backup.workspace.students.length;
+  const fileCount = backup.files.length;
+  if (!window.confirm(
+    `Replace this workspace with the backup containing ${studentCount} student${studentCount === 1 ? "" : "s"} and ${fileCount} saved file${fileCount === 1 ? "" : "s"}? This replaces the current roster, notes, reports, and saved files.`,
+  )) return;
+
+  const previousData = data;
+  const previousStorage = localStorage.getItem(STORAGE_KEY);
+  const incomingData = backup.workspace;
+  incomingData.reportDrafts ||= {};
+  for (const student of incomingData.students) {
+    student.links ||= [];
+    for (const quarter of QUARTER_TABS) student.quarters[quarter] ||= [];
+  }
+  data = incomingData;
+  if (!persist()) {
+    data = previousData;
+    throw new Error("The backup could not be saved to local storage; the current workspace was kept.");
+  }
+  try {
+    await replaceAllStoredFiles(backup.files);
+  } catch (error) {
+    data = previousData;
+    try {
+      if (previousStorage === null) localStorage.removeItem(STORAGE_KEY);
+      else localStorage.setItem(STORAGE_KEY, previousStorage);
+    } catch (rollbackError) {
+      throw new Error(`Could not restore saved files: ${error.message}. The workspace rollback also failed: ${rollbackError.message}`);
+    }
+    throw new Error(`Could not restore saved files; the previous workspace was kept: ${error.message}`);
+  }
+  externalChangesDetected = false;
+  document.querySelector("#resolve-conflict").classList.add("hidden");
+  selectedStudentId = null;
+  currentView = "home";
+  render();
+  showToast(`Workspace restored: ${studentCount} students and ${fileCount} saved files.`);
 }
 
 function formatFileSize(size) {
@@ -981,7 +1322,10 @@ async function renderTabPanel(student) {
         remove.addEventListener("click", async () => {
           try {
             await deleteStudentFile(file.id);
-            showToast(`${file.name} removed.`);
+            const saved = persist();
+            showToast(saved
+              ? `${file.name} removed.`
+              : `${file.name} was removed from saved files, but the workspace needs conflict or storage review.`, !saved);
             renderOverview();
             void renderTabPanel(student);
           } catch (error) {
@@ -1013,7 +1357,10 @@ async function saveUploadedFiles(student, quarter, files) {
   if (!files.length) return;
   try {
     for (const file of files) await storeStudentFile(student, quarter, file);
-    showToast(`${files.length} ${files.length === 1 ? "file" : "files"} saved under ${student.name}.`);
+    const saved = persist();
+    showToast(saved
+      ? `${files.length} ${files.length === 1 ? "file" : "files"} saved under ${student.name}.`
+      : "Files were saved locally, but the workspace needs conflict or storage review.", !saved);
     renderOverview();
     if (getSelectedStudent()?.id === student.id && activeTab === quarter) void renderTabPanel(student);
   } catch (error) {
@@ -1027,10 +1374,17 @@ function renderStudent() {
   setText("#student-name", student.name);
   setText("#student-avatar", initials(student.name));
   setText("#student-class-label", student.className ? student.className.toUpperCase() : "STUDENT PROFILE");
-  setText("#student-meta", student.className ? `Class group · ${student.className}` : "Not assigned to a class group");
+  const groupDescription = student.className ? `Class group · ${student.className}` : "Not assigned to a class group";
+  const trend = scoreTrend(student);
+  const meta = document.querySelector("#student-meta");
+  meta.textContent = isDeclining(student)
+    ? `${groupDescription} · Recent scores trending down (${trend.toFixed(1)} points per assessment)`
+    : groupDescription;
+  meta.classList.toggle("student-trend-warning", isDeclining(student));
   setText("#student-group", student.className || "Unassigned");
   document.querySelector("#student-notes").value = student.notes || "";
   renderChart(student);
+  renderBenchmarkChart(student);
   renderTabs(student);
   getAllStoredFiles()
     .then((files) => {
@@ -1264,6 +1618,7 @@ function render() {
   renderHome();
   const hasStudents = data.students.length > 0;
   overviewGrid.classList.toggle("hidden", !hasStudents);
+  document.querySelector("#analytics-panel").classList.toggle("hidden", !hasStudents || currentView !== "home");
   emptyState.classList.toggle("hidden", hasStudents);
   homeView.classList.toggle("hidden", !hasStudents || currentView !== "home");
   classView.classList.toggle("hidden", !hasStudents || currentView !== "classes");
@@ -1416,11 +1771,16 @@ function addTestFromForm(event) {
   const scoreValue = String(formData.get("score") || "").trim();
   const score = scoreValue ? Number(scoreValue) : null;
   const quarter = String(formData.get("quarter"));
+  const category = String(formData.get("category") || "Other");
   if (!title || !QUARTERS.includes(quarter) || (score !== null && (!Number.isFinite(score) || score < 0 || score > 100))) {
     showToast("Enter a test name and a score between 0 and 100.", true);
     return;
   }
-  student.quarters[quarter].push({ id: id(), title, score });
+  if (!ASSESSMENT_CATEGORIES.includes(category)) {
+    showToast("Choose a valid assessment category.", true);
+    return;
+  }
+  student.quarters[quarter].push({ id: id(), title, score, category });
   activeTab = quarter;
   currentView = "student";
   persist();
@@ -1756,6 +2116,16 @@ function bindEvents() {
   document.querySelector("#open-report-composer").addEventListener("click", openReportComposer);
   document.querySelector("#report-editor").addEventListener("input", scheduleReportSave);
   document.querySelector("#export-report").addEventListener("click", exportProgressReport);
+  document.querySelector("#print-report").addEventListener("click", () => {
+    window.clearTimeout(reportSaveTimer);
+    saveReportDraft();
+    window.print();
+  });
+  document.querySelector("#theme-toggle").addEventListener("click", () => {
+    applyTheme(document.body.dataset.theme === "dark" ? "light" : "dark", true);
+  });
+  document.querySelector("#command-search").addEventListener("input", renderCommandResults);
+  document.querySelector("#command-close").addEventListener("click", () => document.querySelector("#command-dialog").close());
   document.querySelector("#composer-minimize").addEventListener("click", () => {
     composerMinimized = !composerMinimized;
     renderReportComposer();
@@ -1779,6 +2149,32 @@ function bindEvents() {
   });
   document.querySelector("#file-viewer-close").addEventListener("click", closeFileViewer);
   document.querySelector("#tutorial-trigger").addEventListener("click", startTutorial);
+  document.querySelector("#resolve-conflict").addEventListener("click", resolveWorkspaceConflict);
+  document.querySelector("#export-workspace").addEventListener("click", async () => {
+    try {
+      await exportWorkspace();
+    } catch (error) {
+      showToast(`Workspace export failed: ${error.message}`, true);
+    }
+  });
+  document.querySelector("#import-workspace").addEventListener("click", () => {
+    workspaceBackupFile.value = "";
+    workspaceBackupFile.click();
+  });
+  workspaceBackupFile.addEventListener("change", async () => {
+    const file = workspaceBackupFile.files[0];
+    if (!file) return;
+    try {
+      await importWorkspace(file);
+    } catch (error) {
+      showToast(`Workspace restore failed: ${error.message}`, true);
+    }
+  });
+  window.addEventListener("offline", () => setSaveStatus("Offline — changes stay on this device"));
+  window.addEventListener("online", () => {
+    if (externalChangesDetected) setSaveStatus("Changes conflict with another tab", true);
+    else setSaveStatus("Saved on this device");
+  });
   document.querySelector("#tour-next").addEventListener("click", () => {
     if (tutorialIndex === TUTORIAL_STEPS.length - 1) closeTutorial(true);
     else {
@@ -1859,15 +2255,25 @@ function bindEvents() {
       }
       return;
     }
-    if (event.key === "/" && !["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement.tagName)) {
+    const commandShortcut = (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k";
+    const slashShortcut = event.key === "/" && !["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement.tagName);
+    if (commandShortcut || slashShortcut) {
       event.preventDefault();
-      studentSearch.focus();
+      openCommandPalette();
     }
   });
 }
 
 data = loadWorkspace();
 bindEvents();
+watchForExternalChanges();
+try {
+  applyTheme(localStorage.getItem(THEME_KEY) || "light");
+} catch (error) {
+  applyTheme("light");
+  window.setTimeout(() => showToast(`Could not load theme preference: ${error.message}`, true), 0);
+}
+setSaveStatus("Saved on this device");
 render();
 try {
   if (localStorage.getItem(TUTORIAL_KEY) !== "true") window.setTimeout(startTutorial, 700);

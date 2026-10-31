@@ -22,17 +22,20 @@ No framework installation, database server, or build step is required.
 
 - **Student roster:** search and open student profiles; add or edit names, class groups, and teacher notes.
 - **Progress chart:** view scored tests from Q1 through Q4 in chronological quarter/test order, with the oldest score on the left and the latest on the right. Test scores can be between 0 and 100; tests without a score are listed but do not distort the graph.
+- **Classroom analytics:** record Reading, Writing, Math, Science, or Other as an assessment category to view a class-wide score heatmap. Student profiles compare quarterly averages with the class average and flag a downward trend when the least-squares slope of the latest three scores is at most -5 points per assessment. These indicators are prompts for teacher review, not predictions of student outcomes.
 - **Quarter tabs:** keep each student's assessments and files organized in Q1, Q2, Q3, Q4, and Misc files. Empty test slots from a spreadsheet are skipped, so actual tests stay together without gaps.
 - **Class groups:** create groups and drag students between classes or back to the unassigned list.
 - **Student files:** attach and download IEPs and other resources under the student and selected quarter. Files are stored in this browser's IndexedDB.
 - **PDFs:** add PDF IEPs and other documents through each quarter's file picker or drop zone; use **Misc files** for records that are not quarter-specific.
 - **In-app file viewer:** open saved files in a draggable, minimizable viewer. Browser previews cover PDFs, common images, audio/video, text/code, HTML in a sandboxed frame, XLSX, DOCX, and PPTX. Other formats stay downloadable, with a clear preview-unavailable message. Preview support depends on the browser and media codecs.
 - **Draggable panels:** move the report composer and file viewer around the screen; their positions are remembered on this device.
-- **Progress report composer:** open the bottom-left composer from a student's profile, edit its IEP-goal and progress-report prompts, minimize or close it, and export the draft as a `.txt` file. Drafts are saved locally per student.
+- **Progress report composer:** open the bottom-left composer from a student's profile, edit its IEP-goal and progress-report prompts, minimize or close it, export the draft as a `.txt` file, or use **Print / Save PDF** in the browser's print dialog. Drafts are saved locally per student.
 - **Student removal:** remove a student from **Edit profile**. After confirmation, StrideLog removes the student's assessments, notes, report draft, and saved files from this browser.
 - **Roster controls:** search with name suggestions, filter by class, and sort the student cards by name or recorded scores.
 - **Getting started tour:** first-time visitors see a short guided walkthrough. Select the `?` button in the top bar to replay it.
-- **Automatic saves:** student profile edits and teacher notes save locally as you type. The header shows when changes are saving and confirms when they are stored.
+- **Automatic saves:** student profile edits and teacher notes save locally as you type. The header shows the last-save time and warns when another open tab has changed the workspace; review the conflict before choosing which version to keep.
+- **Workspace backup:** use **Export workspace JSON** to download roster data, notes, reports, scores, links, and saved IndexedDB files together. **Import workspace JSON** validates a backup and replaces the current workspace after confirmation. Backups are limited to 100 MB of saved attachments.
+- **Theme and command palette:** switch between light and dark mode from the sidebar. Press `/` or `Ctrl+K`/`Cmd+K` to find a student or run a quick action.
 - **Accessible motion and chart details:** assessment points are keyboard focusable and reveal details when selected. Dashboard sections animate into view, with reduced-motion preferences respected.
 - **Spreadsheet template and import:** download the ready-to-fill Excel workbook from the dashboard or [templates/StrideLog-Progress-Report-Template.xlsx](./templates/StrideLog-Progress-Report-Template.xlsx). Import `.xlsx` files directly, or select a ZIP containing an HTML spreadsheet or a standalone HTML spreadsheet. StrideLog looks for a `Student Name` header and columns named `Test Number 1`, `Test Number 2`, and so on, with optional `Notes` and `Links to files` columns. A suffix such as `Jordan Lee Q2` places assessments in Q2; a name without a quarter suffix is assigned to Q1. Matching students are updated by name while their class groups and saved files are kept.
 - **Local persistence:** roster data, test scores, groups, notes, and spreadsheet links are saved in this browser's local storage.
@@ -53,7 +56,9 @@ Later pushes to `main` run the JavaScript and Excel-template tests before deploy
 
 ## Privacy and data handling
 
-StrideLog has no application server or cloud sync. Student records stay in browser local storage and uploaded files stay in browser IndexedDB on the device where they were added. The app does not send student information to a StrideLog service. This local-only design means records do not automatically appear on another device or browser profile. Back up files and records according to your school's policies, and use a device and browser account approved for student information.
+StrideLog has no application server or cloud sync. Student records stay in browser local storage and uploaded files stay in browser IndexedDB on the device where they were added. The app does not send student information to a StrideLog service. This local-only design means records do not automatically appear on another device or browser profile. Workspace JSON backups include student information and uploaded files; store them only in locations approved by your school. Back up files and records according to your school's policies, and use a device and browser account approved for student information.
+
+Cloud accounts and cross-device synchronization are not enabled. A secure cloud deployment requires a configured provider project, authentication redirect settings, and verified per-user database/storage access policies; do not upload real student data until those safeguards have been configured and reviewed by your school or district.
 
 ## Spreadsheet format
 
